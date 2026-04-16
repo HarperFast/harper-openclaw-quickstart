@@ -1,0 +1,12 @@
+type Earthquake @table @export {
+	id: ID @primaryKey
+	magnitude: Float @indexed
+	place: String @indexed
+	time: String @indexed
+	url: String
+	tsunami: Int
+	felt: Int
+	# --- ingestion metadata ---
+	_ingestedAt: String @indexed
+	_sourcePipeline: String @indexed
+}

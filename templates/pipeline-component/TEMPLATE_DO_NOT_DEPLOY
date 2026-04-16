@@ -1,0 +1,5 @@
+This directory is a template. It contains unresolved {{PLACEHOLDER}} tokens
+and will not parse as JavaScript. Never deploy this directory directly.
+
+The agent (or a human) copies this directory elsewhere, renders every
+{{PLACEHOLDER}}, and deploys the copy. See README.md in this directory.

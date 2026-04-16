@@ -1,0 +1,12 @@
+# Pipeline target table. OpenClaw replaces {{TARGET_TABLE}} and {{TARGET_TABLE_FIELDS}}
+# based on the shape of records the source API returns.
+#
+# @export gives us free REST + WebSocket CRUD on /{{TARGET_TABLE}}/ so the
+# downstream funnel doesn't need any glue code.
+
+type {{TARGET_TABLE}} @table @export {
+{{TARGET_TABLE_FIELDS}}
+	# --- ingestion metadata (added by every pipeline for observability) ---
+	_ingestedAt: String @indexed
+	_sourcePipeline: String @indexed
+}

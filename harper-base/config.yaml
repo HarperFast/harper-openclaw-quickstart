@@ -1,0 +1,10 @@
+# harper-base component config
+# Loads the GraphQL schema + the helper resources.
+
+graphqlSchema:
+  files: 'schema.graphql'
+
+jsResource:
+  files: 'resources.js'
+
+rest: true

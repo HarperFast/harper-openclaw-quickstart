@@ -1,0 +1,8 @@
+# {{PIPELINE_ID}} — Harper pipeline component
+graphqlSchema:
+  files: 'schema.graphql'
+
+jsResource:
+  files: 'resources.js'
+
+rest: true

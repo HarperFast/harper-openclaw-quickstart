@@ -1,0 +1,15 @@
+{
+  "name": "harper-base",
+  "version": "0.1.0",
+  "description": "Registry + human-escape-hatch tables for the OpenClaw→Harper pipeline-builder pattern.",
+  "type": "module",
+  "scripts": {
+    "deploy": "dotenv -- npm run deploy:component",
+    "deploy:component": "harperdb deploy_component . restart=rolling replicated=true"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "harperdb": "^4.7.20"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,54 @@
+# Step 3: Scaffold the pipeline component
+
+**Goal:** copy `templates/pipeline-component/` into a fresh working directory and render every `{{PLACEHOLDER}}`.
+
+## Working directory
+
+Scaffold under your OpenClaw workspace:
+
+```
+<workspace>/harper-pipelines/<PIPELINE_ID>/
+```
+
+Never scaffold over an existing directory without confirming with the user. If `<PIPELINE_ID>` already exists, either pick a new id (e.g. `-v2` suffix) or ask.
+
+## Placeholders — complete list
+
+| Placeholder | Rules |
+|---|---|
+| `PIPELINE_ID` | kebab-case, `[a-z0-9-]+`, ≤ 40 chars, globally unique in the cluster. Try `${SOURCE_SLUG}` first; add suffix if taken. |
+| `PIPELINE_ID_PASCAL` | PascalCase version of `PIPELINE_ID`. |
+| `TARGET_TABLE` | PascalCase, singular, matches the entity being ingested (e.g. `ContractorRegistration`). |
+| `TARGET_TABLE_FIELDS` | GraphQL fields, tab-indented, one per line. Must include a `@primaryKey` field. |
+| `PRIMARY_KEY_FIELD` | name of the `@primaryKey` field above. Must be stable across runs. |
+| `SOURCE_NAME` | human label; used in registry + UI. |
+| `SOURCE_URL` | base URL of the upstream API. |
+| `SCHEDULE_CRON` | standard 5-field cron. Default `*/15 * * * *`. Never less than 1 minute; respect upstream rate limits. |
+| `BUSINESS_OBJECTIVE` | the user's original prompt, short. |
+| `FETCH_FN_BODY` | a JavaScript snippet. See below. |
+| `HARPER_BASE_URL` | from `HARPER_URL` env var. |
+
+## Writing `FETCH_FN_BODY`
+
+This is the only per-source code. Rules:
+
+1. Must return `Promise<Array<Record>>`. An array of plain objects.
+2. Must throw on HTTP error (don't swallow).
+3. Must be self-contained — use `fetch` (Node 20+ native). No outside imports.
+4. If the source supports incremental pulls (`?since=` or similar), use it. Compute the `since` value from `Date.now()` and the schedule cron, with a comfortable overlap (2×) to absorb late-arriving data. Dedupe is handled by the template's `put` upsert.
+5. Handle pagination with a loop, capped at some sane max (default 50 pages). If you hit the cap, log and stop — better to take multiple runs than to OOM.
+6. If the source requires an API key, read it from `process.env.<SOURCE>_API_KEY`. Do not embed secrets in the file.
+7. Normalize field names into the schema you defined. Don't emit fields not in the schema.
+
+## Validation before moving on
+
+Before you call deploy, run two sanity checks:
+
+1. **Dry-run the fetch function**: extract `FETCH_FN_BODY` into a standalone `fetch-test.js` in your scratch dir, run it with `node`, confirm it returns an array with >0 records and a valid `PRIMARY_KEY_FIELD` on each.
+2. **Lint the rendered resources.js**: `node --check resources.js` should pass. If it fails, you have a template-render bug — fix before deploying.
+
+Only after both pass, move to step 4.
+
+## Example: USGS earthquakes, fully rendered
+
+See `examples/usgs-earthquakes/` in this repo for the exact file output of a correct scaffold. Use it as a reference when rendering your own.
