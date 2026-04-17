@@ -3,41 +3,47 @@
 # Two tables that give OpenClaw a shared place to:
 #   1. Record every pipeline it builds (so you can audit + reuse).
 #   2. Flag anything it can't do without a human (API keys, paid sources, etc).
+#
+# Both use plain `@table @export` per Harper's adding-tables-with-schemas rule.
+# The GraphQL type name IS the underlying table name — do NOT use @table(table:)
+# overrides, which cause tables.TypeName to be undefined in Resource methods
+# (REST routing resolves the name correctly but the runtime tables global
+#  keys by the underlying name only).
 
-# --- pipelines ---------------------------------------------------------------
+# --- Pipeline --------------------------------------------------------------
 # One row per Harper component OpenClaw has deployed.
-type Pipeline @table(table: "pipelines") @export {
-	id: ID @primaryKey                          # e.g. "usgs-earthquakes"
-	sourceName: String @indexed                 # human label ("USGS Earthquake Catalog")
-	sourceUrl: String                           # base URL of the upstream API
-	targetTable: String @indexed                # the Harper table this pipeline writes to
-	scheduleCron: String                        # cron expression, e.g. "*/15 * * * *"
-	businessObjective: String @indexed          # the user intent that led to this pipeline
-	status: String @indexed                     # "active" | "paused" | "failed"
-	createdAt: String @indexed                  # ISO timestamp
-	updatedAt: String
-	createdByAgent: String                      # OpenClaw session id / agent id
-	componentPackage: String                    # git URL or NPM ref that was deployed
-	lastRunAt: String
-	lastRunStatus: String @indexed              # "ok" | "error" | "partial"
-	lastRunRecords: Int                         # count of records in last pull
-	notes: String
+type Pipeline @table @export {
+    id: ID @primaryKey
+    sourceName: String @indexed
+    sourceUrl: String
+    targetTable: String @indexed
+    scheduleCron: String
+    businessObjective: String @indexed
+    status: String @indexed
+    createdAt: String @indexed
+    updatedAt: String
+    createdByAgent: String
+    componentPackage: String
+    lastRunAt: String
+    lastRunStatus: String @indexed
+    lastRunRecords: Int
+    notes: String
 }
 
-# --- pending_human_action ----------------------------------------------------
+# --- PendingHumanAction ----------------------------------------------------
 # When OpenClaw finds a viable-looking source but can't proceed on its own,
 # it writes a row here instead of guessing.
-type PendingHumanAction @table(table: "pending_human_action") @export {
-	id: ID @primaryKey                          # uuid
-	sourceName: String @indexed
-	sourceUrl: String
-	businessObjective: String @indexed
-	blocker: String @indexed                    # "api_key" | "paid_broker" | "unclear_tos" | "login_required" | "other"
-	blockerDetail: String                       # free-text description of what's needed
-	suggestedNextStep: String                   # what a human should do (e.g. "Register at data.sam.gov and obtain an API key")
-	status: String @indexed                     # "open" | "in_progress" | "resolved" | "dismissed"
-	createdAt: String @indexed
-	resolvedAt: String
-	resolvedBy: String
-	createdByAgent: String
+type PendingHumanAction @table @export {
+    id: ID @primaryKey
+    sourceName: String @indexed
+    sourceUrl: String
+    businessObjective: String @indexed
+    blocker: String @indexed
+    blockerDetail: String
+    suggestedNextStep: String
+    status: String @indexed
+    createdAt: String @indexed
+    resolvedAt: String
+    resolvedBy: String
+    createdByAgent: String
 }

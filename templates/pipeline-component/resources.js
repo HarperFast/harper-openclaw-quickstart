@@ -63,7 +63,7 @@ async function runPipeline() {
 
 async function reportRun({ runAt, status, records }) {
 	try {
-		await tables.pipelines.patch(PIPELINE_ID, {
+		await tables.Pipeline.patch(PIPELINE_ID, {
 			lastRunAt: runAt,
 			lastRunStatus: status,
 			lastRunRecords: records,
@@ -83,7 +83,7 @@ export class {{PIPELINE_ID_PASCAL}}Run extends Resource {
 	}
 	async get() {
 		// Cheap health probe: returns the last-known run info from the registry.
-		const reg = await tables.pipelines.get(PIPELINE_ID);
+		const reg = await tables.Pipeline.get(PIPELINE_ID);
 		return reg ?? { pipelineId: PIPELINE_ID, status: 'unregistered' };
 	}
 }
