@@ -1,6 +1,6 @@
 {
   "name": "harper-openclaw-quickstart",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "OpenClaw + Harper pipeline-builder pattern — deploy tooling hoisted to repo root.",
   "type": "module",

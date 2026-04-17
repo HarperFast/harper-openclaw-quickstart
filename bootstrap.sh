@@ -29,7 +29,7 @@ die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 say "Step 1/7: gather Harper Fabric credentials"
 
-if [[ -z "${CLI_TARGET:-}" || -z "${CLI_TARGET_USERNAME:-}" || -z "${CLI_TARGET_PASSWORD:-}" ]]; then
+if [[ -z "${CLI_TARGET:-}" || -z "${CLI_APP_URL:-}" || -z "${CLI_TARGET_USERNAME:-}" || -z "${CLI_TARGET_PASSWORD:-}" ]]; then
   if [[ -f "$SECRETS_FILE" ]]; then
     # shellcheck source=/dev/null
     set -a; source "$SECRETS_FILE"; set +a
@@ -39,9 +39,20 @@ fi
 
 if [[ -z "${CLI_TARGET:-}" ]]; then
   if [[ -t 0 ]]; then
-    read -r -p "    CLI_TARGET (Fabric Application URL, e.g. https://foo.cluster.harper.fast): " CLI_TARGET
+    echo "    CLI_TARGET = Fabric Operations API URL (used by the harperdb CLI to deploy)."
+    echo "    On Fabric this is usually a region host on port :9925."
+    read -r -p "    CLI_TARGET (e.g. https://us-west1-a-1.foo.cluster.harper.fast:9925): " CLI_TARGET
   else
     die "CLI_TARGET not set and no TTY to prompt. Export it first, or run interactively."
+  fi
+fi
+if [[ -z "${CLI_APP_URL:-}" ]]; then
+  if [[ -t 0 ]]; then
+    echo "    CLI_APP_URL = Fabric Application URL (used for REST: GET /Pipeline/, GET /<Table>/)."
+    echo "    On Fabric this is usually the short cluster hostname, no explicit port."
+    read -r -p "    CLI_APP_URL (e.g. https://foo.cluster.harper.fast): " CLI_APP_URL
+  else
+    die "CLI_APP_URL not set and no TTY to prompt. Export it first, or run interactively."
   fi
 fi
 if [[ -z "${CLI_TARGET_USERNAME:-}" ]]; then
@@ -60,9 +71,16 @@ if [[ -z "${CLI_TARGET_PASSWORD:-}" ]]; then
   fi
 fi
 
-# Sanity
-[[ "$CLI_TARGET" == https://* ]] || die "CLI_TARGET must start with https://. Got: $CLI_TARGET"
-[[ "$CLI_TARGET" != *localhost* && "$CLI_TARGET" != *127.0.0.1* ]] || die "CLI_TARGET points at localhost. Fabric URLs are remote."
+# Sanity — both URLs
+for var in CLI_TARGET CLI_APP_URL; do
+  val="${!var}"
+  [[ "$val" == https://* ]] || die "$var must start with https://. Got: $val"
+  [[ "$val" != *localhost* && "$val" != *127.0.0.1* ]] || die "$var points at localhost. Fabric URLs are remote."
+done
+if [[ "$CLI_TARGET" == "$CLI_APP_URL" ]]; then
+  printf '    \033[1;33m⚠\033[0m CLI_TARGET and CLI_APP_URL are identical. On Fabric these are usually different host:port.\n'
+  printf '        If verify fails later with 404 on /Pipeline/, this is why — go back to the Fabric Config tab and copy both URLs.\n'
+fi
 ok "creds present and shaped correctly"
 
 # ---------------------------------------------------------------------------
@@ -73,6 +91,7 @@ mkdir -p "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 {
   echo "CLI_TARGET=$CLI_TARGET"
+  echo "CLI_APP_URL=$CLI_APP_URL"
   echo "CLI_TARGET_USERNAME=$CLI_TARGET_USERNAME"
   echo "CLI_TARGET_PASSWORD=$CLI_TARGET_PASSWORD"
 } > "$SECRETS_FILE"
@@ -84,22 +103,43 @@ ok "wrote $SECRETS_FILE (mode 600)"
 # ---------------------------------------------------------------------------
 say "Step 3/7: pre-flight — confirm Fabric cluster is reachable + authenticated"
 
-preflight_response="$(curl -sS --max-time 15 \
+# Probe the Operations API (CLI_TARGET). It must respond to describe_all with
+# valid JSON, not a 404 page, HTML login screen, or "Not found" string.
+preflight_status="$(curl -sS --max-time 15 \
+  -o /tmp/harper-preflight.body \
+  -w '%{http_code}' \
   -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
   -H 'Content-Type: application/json' \
   -d '{"operation":"describe_all"}' \
-  "$CLI_TARGET" || true)"
+  "$CLI_TARGET" || echo "000")"
+preflight_body="$(cat /tmp/harper-preflight.body 2>/dev/null || true)"
+rm -f /tmp/harper-preflight.body
 
-if [[ -z "$preflight_response" ]]; then
-  die "No response from $CLI_TARGET. Check the URL (port included?) and that the cluster is running."
+if [[ "$preflight_status" == "000" || -z "$preflight_body" ]]; then
+  die "No response from $CLI_TARGET. Check URL (port included? typically :9925) and that the cluster is running."
 fi
-if [[ "$preflight_response" == *"Unauthorized"* || "$preflight_response" == *"401"* ]]; then
-  die "Authentication failed against $CLI_TARGET. Check CLI_TARGET_USERNAME / CLI_TARGET_PASSWORD."
+if [[ "$preflight_status" == "401" ]]; then
+  die "Auth failed against $CLI_TARGET (HTTP 401). Check CLI_TARGET_USERNAME / CLI_TARGET_PASSWORD."
 fi
-if [[ "$preflight_response" == "<!DOCTYPE"* || "$preflight_response" == "<html"* ]]; then
-  die "Got HTML from $CLI_TARGET — this is a web UI, not the Operations API. Use the Application URL from the Fabric Config tab."
+# The decisive check: must parse as JSON. This rejects "Not found", HTML error
+# pages, and anything else the gateway might emit for a non-Ops URL.
+if ! printf '%s' "$preflight_body" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+  printf '    cluster response (HTTP %s, first 200 chars):\n    %s\n' \
+    "$preflight_status" "$(printf '%s' "$preflight_body" | head -c 200)"
+  die "CLI_TARGET did not return JSON for describe_all. This is not a Harper Operations API endpoint. Confirm CLI_TARGET is the Ops API URL (typically :9925), not the Application URL."
 fi
-ok "cluster reachable + authenticated"
+ok "CLI_TARGET reachable + Ops API responding (HTTP $preflight_status)"
+
+# Probe the Application URL too — if it's wrong, verify will fail later
+# and it's kinder to catch it now. We accept any 2xx/4xx as "reachable";
+# the important thing is the host resolves and responds.
+app_status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  "$CLI_APP_URL/" || echo "000")"
+if [[ "$app_status" == "000" ]]; then
+  die "CLI_APP_URL is unreachable ($CLI_APP_URL). Confirm this is the Application URL from the Fabric Config tab."
+fi
+ok "CLI_APP_URL reachable (HTTP $app_status)"
 
 # ---------------------------------------------------------------------------
 # 4. Install deploy tooling (once, at repo root) + deploy harper-base
@@ -148,11 +188,12 @@ say "Step 6/7: verify harper-base tables are live on Fabric"
 check_endpoint() {
   local table="$1"
   local code
+  # REST probes go against CLI_APP_URL — the Application URL, NOT the Ops API.
   code="$(curl -sS -o /dev/null -w '%{http_code}' \
     -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-    "$CLI_TARGET/${table}/" || true)"
+    "$CLI_APP_URL/${table}/" || true)"
   if [[ "$code" == "200" ]]; then
-    ok "GET $CLI_TARGET/${table}/ → 200"
+    ok "GET $CLI_APP_URL/${table}/ → 200"
     return 0
   fi
   return 1
@@ -165,7 +206,7 @@ for attempt in $(seq 1 $max_attempts); do
     break
   fi
   if [[ $attempt -eq $max_attempts ]]; then
-    die "harper-base tables not reachable after $max_attempts attempts. Deploy may have gone to wrong target or failed silently. See docs/troubleshooting.md."
+    die "harper-base tables not reachable on $CLI_APP_URL after $max_attempts attempts. Either (a) the deploy landed on the wrong cluster (CLI_TARGET Ops API pointed elsewhere), or (b) CLI_APP_URL is wrong. See docs/troubleshooting.md."
   fi
   printf '    (attempt %d/%d — waiting 5s)\n' "$attempt" "$max_attempts"
   sleep 5

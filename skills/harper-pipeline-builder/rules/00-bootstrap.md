@@ -25,13 +25,14 @@ Do these five sub-steps in order. Stop at the first failure.
 
 ### 0.1 Gather credentials
 
-If `~/.openclaw/secrets/harper.env` does not exist, ask the user for three values:
+If `~/.openclaw/secrets/harper.env` does not exist, ask the user for four values. **Both URLs come from the Fabric Config tab for the target cluster — they are usually different host:port pairs and both matter.**
 
-- `CLI_TARGET` — the Harper Fabric Application URL (starts with `https://`, never `localhost`)
-- `CLI_TARGET_USERNAME` — cluster super_user username
+- `CLI_TARGET` — Harper **Operations API URL** (used by the `harperdb` CLI for `deploy_component`, `describe_all`, etc.). On Fabric this is typically a region-specific host on port `:9925`. Example: `https://us-west1-a-1.foo.cluster.harper.fast:9925`
+- `CLI_APP_URL` — Harper **Application URL** (used for REST endpoints: `GET /Pipeline/`, `GET /<Table>/`, `GET /<PipelineId>Run`). Typically the short cluster hostname, no explicit port. Example: `https://foo.cluster.harper.fast`
+- `CLI_TARGET_USERNAME` — cluster super_user username (same creds authenticate both URLs)
 - `CLI_TARGET_PASSWORD` — cluster super_user password
 
-Do not invent these. Do not assume defaults. If the user hasn't created a Fabric cluster yet, point them at `https://fabric.harper.fast` and wait.
+Do not invent these. Do not assume defaults. If the user gives you only one URL, ask them for the other — setting both to the same value is the known root cause of "deploy said success but nothing on Fabric" incidents going back months.
 
 ### 0.2 Write the secrets file
 
@@ -39,25 +40,35 @@ Do not invent these. Do not assume defaults. If the user hasn't created a Fabric
 mkdir -p ~/.openclaw/secrets
 chmod 700 ~/.openclaw/secrets
 cat > ~/.openclaw/secrets/harper.env <<EOF
-CLI_TARGET=<value>
+CLI_TARGET=<ops-api-url>
+CLI_APP_URL=<application-url>
 CLI_TARGET_USERNAME=<value>
 CLI_TARGET_PASSWORD=<value>
 EOF
 chmod 600 ~/.openclaw/secrets/harper.env
 ```
 
-### 0.3 Pre-flight: cluster reachable + authenticated
+### 0.3 Pre-flight: both URLs reachable
 
 ```bash
 source ~/.openclaw/secrets/harper.env
+
+# Ops API — must return JSON (not "Not found", not HTML)
 curl -sS --max-time 15 \
   -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
   -H 'Content-Type: application/json' \
   -d '{"operation":"describe_all"}' \
-  "$CLI_TARGET" | head -c 400
+  "$CLI_TARGET" | python3 -m json.tool | head -c 400
+
+# Application URL — should respond (expect 200/404, NOT connection refused)
+curl -sS -o /dev/null -w 'CLI_APP_URL: HTTP %{http_code}\n' \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  "$CLI_APP_URL/"
 ```
 
-Expected: a JSON object. If you see HTML, 401, or a connection error, stop — the creds or URL are wrong. See `docs/troubleshooting.md`.
+Expected: the first command prints a valid JSON object. If it errors with `Expecting value` or prints `Not found`, `CLI_TARGET` is pointed at the wrong URL — most likely the Application URL instead of the Ops API. The second command prints any HTTP code that isn't `000` — if it's `000`, `CLI_APP_URL` is unreachable.
+
+If you see HTML, 401, or a connection error on either, stop — the creds or URLs are wrong. See `docs/troubleshooting.md`.
 
 ### 0.4 Install deploy tooling at repo root, then deploy `harper-base`
 
@@ -82,12 +93,12 @@ There is **no** `npm install` inside `harper-base`. It has zero runtime dependen
 for tbl in Pipeline PendingHumanAction; do
   code=$(curl -sS -o /dev/null -w '%{http_code}' \
     -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-    "$CLI_TARGET/${tbl}/")
+    "$CLI_APP_URL/${tbl}/")
   echo "$tbl: HTTP $code"
 done
 ```
 
-Both must be `200`. If either is `404`, the deploy did not actually land on Fabric — usually because of a wrong `CLI_TARGET` or a local `.env` shadowing the secrets file. Do not proceed; fix the deploy and re-verify.
+Both must be `200`. If either is `404`, one of two things is wrong: (a) the deploy landed on a different cluster than `CLI_APP_URL` points at — check that `CLI_TARGET` and `CLI_APP_URL` came from the same Fabric Config tab; (b) a local `.env` shadowed the secrets file and deployed to the wrong target. Do not proceed; fix and re-verify.
 
 Fabric sometimes needs a few seconds after a successful deploy before endpoints are live. Retry up to 5 times, 5 seconds apart, before declaring failure.
 

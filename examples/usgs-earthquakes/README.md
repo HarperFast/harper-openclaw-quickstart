@@ -20,11 +20,11 @@ Then trigger a first run:
 
 ```bash
 curl -u $CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD \
-     -X POST $CLI_TARGET/UsgsEarthquakesRun -d '{}'
+     -X POST $CLI_APP_URL/UsgsEarthquakesRun -d '{}'
 # → {"runAt":"...","status":"ok","records":147}
 
 curl -u $CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD \
-     "$CLI_TARGET/Earthquake/?limit=3"
+     "$CLI_APP_URL/Earthquake/?limit=3"
 ```
 
 Then register it in the `pipelines` table (if you deployed `harper-base/`):
@@ -32,7 +32,7 @@ Then register it in the `pipelines` table (if you deployed `harper-base/`):
 ```bash
 curl -u $CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD \
      -H 'Content-Type: application/json' \
-     -X POST $CLI_TARGET/PipelineRegister \
+     -X POST $CLI_APP_URL/PipelineRegister \
      -d '{
            "id": "usgs-earthquakes",
            "sourceName": "USGS Earthquake Catalog",

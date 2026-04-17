@@ -21,13 +21,40 @@ If your install is slow anyway, check your network — the repo-root install is 
 
 ## Deploy says "Successfully deployed" but nothing shows up on Fabric
 
-**This is the #1 silent failure.** The CLI reports success, the agent reports success, and yet `$CLI_TARGET/<TARGET_TABLE>/` returns 404. Almost always one of:
+**This is the #1 silent failure, and the root cause is almost always the same:** `CLI_TARGET` and `CLI_APP_URL` are set to the same URL, or only one is set, or they don't belong to the same Fabric cluster.
 
-1. **Local `.env` overriding the global secrets file.** The component directory had a `.env` (or the Harper CLI found a default) pointing at `http://localhost:9925` — the agent deployed to a local Harper instance, not Fabric. Fix: `cat <component>/.env` and confirm `CLI_TARGET` is `https://...`. If the file doesn't exist, `cp ~/.openclaw/secrets/harper.env <component>/.env`.
-2. **`CLI_TARGET` missing the port.** Fabric clusters sometimes expose the Operations API on a non-default port (e.g. `:9926`). The Application URL in the Fabric Config tab is authoritative — copy it verbatim, port included.
-3. **Wrong protocol.** Fabric is always `https://`. A `CLI_TARGET=http://...` will appear to connect but won't match auth, and you'll end up on a different surface.
+On Fabric, two URLs do different jobs:
 
-The pre-flight checks in `rules/04-deploy.md` catch all three. Skipping them is what produces this failure mode.
+- **`CLI_TARGET`** — the **Operations API URL**, used by the `harperdb` CLI for `deploy_component`, `describe_all`, etc. Typically a region-specific host on port `:9925`, e.g. `https://us-west1-a-1.foo.cluster.harper.fast:9925`.
+- **`CLI_APP_URL`** — the **Application URL**, used by every REST probe (`GET /Pipeline/`, `GET /<Table>/`, `GET /<PipelineId>Run`). Typically the short cluster hostname, no explicit port, e.g. `https://foo.cluster.harper.fast`.
+
+They are different host:port pairs. Both are listed in the Fabric Config tab for the cluster. If you only copy one and use it for both variables, the CLI either (a) accepts the `deploy_component` call and the agent then 404s on `/Pipeline/`, or (b) 404s on `describe_all` during pre-flight. Either way, nothing useful happens.
+
+**Fix:**
+
+1. Open the cluster in the Fabric UI → Config tab.
+2. Copy the Operations API URL (with port) into `CLI_TARGET`.
+3. Copy the Application URL into `CLI_APP_URL`.
+4. Delete any component-local `.env` that might be shadowing the global secrets file: `rm <component>/.env && cp ~/.openclaw/secrets/harper.env <component>/.env`.
+5. Re-run `bootstrap.sh` if `harper-base` wasn't verified on this cluster.
+
+Other historical causes of the same symptom, now rarer because the split catches them:
+
+- **Local `.env` overriding the global secrets file** with an `http://localhost:9925` target — agent deployed to a local Harper instance instead of Fabric.
+- **Wrong protocol** — `CLI_TARGET=http://...` appears to connect but won't match auth.
+- **Stale URL** — Fabric can rotate Ops API hostnames when clusters are rebuilt; copying an old URL from chat history won't work. Always re-open the Config tab.
+
+The pre-flight checks in `rules/04-deploy.md` catch all of these. Skipping them is what produces this failure mode.
+
+## Deploy succeeds but verify fails with 404 on `/Pipeline/`
+
+Sibling of the above, diagnosed more precisely. `harperdb deploy_component` printed `Successfully deployed`, cluster logs confirm the component landed, but `scripts/verify.mjs` retries five times and still gets 404.
+
+This means the component deployed correctly but `CLI_APP_URL` is wrong. The tables *are* on Fabric — verify is looking in the wrong place.
+
+**How to confirm:** the Fabric Config tab lists both URLs. curl the Application URL (no port) vs. the Ops API URL (with `:9925`). Whichever returns `200 []` for `GET /Pipeline/` is your `CLI_APP_URL`.
+
+**Fix:** put the right value in `CLI_APP_URL` and re-run `npm run deploy:verify` (no re-deploy needed).
 
 ## Deploy fails with `ECONNREFUSED`
 

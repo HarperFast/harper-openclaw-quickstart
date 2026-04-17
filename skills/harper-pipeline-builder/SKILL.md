@@ -10,7 +10,7 @@ description: |
 license: Apache-2.0
 metadata:
   author: harper + openclaw
-  version: '0.1.0'
+  version: '0.1.3'
 ---
 
 # harper-pipeline-builder
@@ -50,12 +50,15 @@ Follow these steps in order. Each step has its own rule file with details.
 
 ## Required context the user (or `AGENTS.md`) must provide
 
-- `CLI_TARGET` — Harper Fabric Application URL (the cluster URL, `https://...`)
-- `CLI_TARGET_USERNAME`, `CLI_TARGET_PASSWORD` — cluster super_user creds
+- `CLI_TARGET` — Harper Fabric **Operations API URL** (used by the `harperdb` CLI for `deploy_component`, `describe_all`, etc.). Typically a region-specific host on port `:9925`, e.g. `https://us-west1-a-1.<cluster>.harper.fast:9925`.
+- `CLI_APP_URL` — Harper Fabric **Application URL** (used for REST probes: `GET /Pipeline/`, `GET /<Table>/`, `GET /<PipelineId>Run`). Typically the short cluster hostname, no explicit port, e.g. `https://<cluster>.harper.fast`.
+- `CLI_TARGET_USERNAME`, `CLI_TARGET_PASSWORD` — cluster super_user creds (same for both URLs).
 
-These are the exact names the Harper CLI expects. **Do not rename them or introduce aliases like `HARPER_URL`** — every pipeline component inherits them from `.env`, and renaming breaks the CLI.
+**These two URLs are different host:port pairs on Fabric.** Both come from the Fabric Config tab for the target cluster. Setting them to the same value, or using only one, is the known root cause of "deploy said success but nothing on Fabric" incidents going back to this skill's first release.
 
-If any are missing, stop and ask. Do not proceed with placeholder values. `CLI_TARGET` pointing at `localhost` is a mistake — Fabric URLs are always `https://` and remote.
+`CLI_TARGET` / `CLI_TARGET_USERNAME` / `CLI_TARGET_PASSWORD` use those exact names because the Harper CLI reads them. Do not rename them.
+
+If any are missing, stop and ask. Do not proceed with placeholder values. Either URL pointing at `localhost` is a mistake — Fabric URLs are always `https://` and remote.
 
 ## What "done" looks like
 

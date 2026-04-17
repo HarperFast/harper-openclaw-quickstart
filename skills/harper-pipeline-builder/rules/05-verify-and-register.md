@@ -8,7 +8,7 @@ The template exposes a manual trigger endpoint at `POST /<PIPELINE_ID_PASCAL>Run
 
 ```bash
 curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-     -X POST $CLI_TARGET/<PIPELINE_ID_PASCAL>Run \
+     -X POST $CLI_APP_URL/<PIPELINE_ID_PASCAL>Run \
      -d '{}'
 ```
 
@@ -20,7 +20,7 @@ Expected response:
 
 If `status !== "ok"` or `records === 0`, the pipeline is not working. Debug:
 
-- `curl $CLI_TARGET/<PIPELINE_ID_PASCAL>Run` (GET) → returns registry row, but only after step 2 below
+- `curl $CLI_APP_URL/<PIPELINE_ID_PASCAL>Run` (GET) → returns registry row, but only after step 2 below
 - Check cluster logs for your component via the Harper ops API `read_log` operation
 - Common cause: `FETCH_FN_BODY` is returning records without the `PRIMARY_KEY_FIELD` — they're silently skipped. Re-do the dry-run from step 3.
 
@@ -28,7 +28,7 @@ If `status !== "ok"` or `records === 0`, the pipeline is not working. Debug:
 
 ```bash
 curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-     "$CLI_TARGET/<TARGET_TABLE>/?limit=3"
+     "$CLI_APP_URL/<TARGET_TABLE>/?limit=3"
 ```
 
 Should return a list of records. If it returns `[]`, records didn't land — check that `PRIMARY_KEY_FIELD` matches what `fetchFromSource` actually returns.
@@ -60,8 +60,8 @@ A good report has four elements:
 1. **What you built** — pipeline id, target table, schedule.
 2. **Evidence it works** — first-run record count + a couple of sample records.
 3. **How the funnel consumes it** — the REST URL(s) to hit. For table `ContractorRegistration`:
-   - `GET $CLI_TARGET/ContractorRegistration/?limit=100`
-   - `GET $CLI_TARGET/ContractorRegistration/?filter={"state":"CO"}`
+   - `GET $CLI_APP_URL/ContractorRegistration/?limit=100`
+   - `GET $CLI_APP_URL/ContractorRegistration/?filter={"state":"CO"}`
    - WebSocket subscription: `wss://<cluster>/ContractorRegistration`
 4. **What's next in the human queue** — if any sources were filed for human action during this work, list them with the specific next step.
 

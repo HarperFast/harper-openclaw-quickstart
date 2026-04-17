@@ -12,6 +12,13 @@ Appendix A at the bottom covers the Operations-API + git-URL path for CI/CD only
 
 **This step has broken every previous agent run. Do not skip it.**
 
+> **Two URLs, not one.** Fabric serves the Operations API (what the `harperdb` CLI talks to) and your components' REST endpoints (`/Pipeline/`, `/<Table>/`, `/<Pipeline>Run`) on **different host:port pairs**. This skill uses two env vars:
+>
+> - `CLI_TARGET` — Operations API URL (e.g. `https://us-west1-a-1.<cluster>.harper.fast:9925`)
+> - `CLI_APP_URL` — Application URL (e.g. `https://<cluster>.harper.fast`)
+>
+> Both are listed in the Fabric Config tab. Using the same value for both is the cause of every historical "deploy said success but nothing on Fabric" incident.
+
 Before you touch `npm run deploy`, verify four things in this order:
 
 ### 1. Credentials loaded, not inherited
@@ -19,12 +26,12 @@ Before you touch `npm run deploy`, verify four things in this order:
 ```bash
 cd <workspace>/harper-pipelines/<PIPELINE_ID>/
 test -f .env || cp ~/.openclaw/secrets/harper.env .env
-grep -E '^CLI_TARGET(_USERNAME|_PASSWORD)?=' .env
+grep -E '^(CLI_TARGET|CLI_APP_URL|CLI_TARGET_USERNAME|CLI_TARGET_PASSWORD)=' .env
 ```
 
-You must see exactly three lines — `CLI_TARGET`, `CLI_TARGET_USERNAME`, `CLI_TARGET_PASSWORD` — and none of them pointing at `localhost`, `127.0.0.1`, or `http://` (Fabric is always `https://`). A local `.env` silently overriding the global secrets file is the #1 cause of "the deploy said success but nothing's on the cluster."
+You must see exactly four lines — `CLI_TARGET`, `CLI_APP_URL`, `CLI_TARGET_USERNAME`, `CLI_TARGET_PASSWORD` — and none of them pointing at `localhost`, `127.0.0.1`, or `http://` (Fabric is always `https://`). A local `.env` silently overriding the global secrets file is a common cause of "the deploy said success but nothing's on the cluster."
 
-### 2. Target is reachable and authenticated
+### 2. Ops API is reachable and authenticated
 
 ```bash
 source .env
@@ -34,20 +41,21 @@ curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
      "$CLI_TARGET" | head -c 200
 ```
 
-Expected: a JSON object listing existing components/databases. If you get:
+Expected: a **JSON** object listing existing components/databases. If you get:
 
-- `connection refused` → `CLI_TARGET` is missing the port or pointing at a dead host. Fabric clusters expose the Operations API on their Application URL — confirm with the user which URL to use.
+- `connection refused` → `CLI_TARGET` is missing the port (usually `:9925`) or pointing at a dead host.
 - `401` → creds are wrong. Stop.
-- HTML → you're hitting a web UI, not the Operations API. Wrong URL. Stop.
-- `{}` or a short object → you're on Fabric and authenticated. Proceed.
+- HTML → wrong URL, that's a web UI. Stop.
+- `Not found` or any non-JSON body → this isn't the Ops API. You probably pointed `CLI_TARGET` at the Application URL by mistake. Swap with `CLI_APP_URL` and re-check.
+- JSON object → you're on Fabric's Ops API and authenticated. Proceed.
 
-### 3. `harper-base` is already deployed
+### 3. `harper-base` is already deployed (check the App URL)
 
 ```bash
-curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" "$CLI_TARGET/Pipeline/" | head -c 200
+curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" "$CLI_APP_URL/Pipeline/" | head -c 200
 ```
 
-Expected: `[]` or a JSON array. If you get 404, `harper-base` hasn't been deployed to this cluster. Stop and tell the user — your pipeline has nowhere to register.
+Expected: `[]` or a JSON array. If you get 404, either `harper-base` hasn't been deployed to this cluster, or `CLI_APP_URL` is wrong. Run `./bootstrap.sh` from the quickstart repo to fix before continuing — your pipeline has nowhere to register.
 
 ### 4. No in-flight deploy already running
 
@@ -85,27 +93,27 @@ That message means **"Fabric accepted the upload"** — not "the pipeline is run
 
 **Do not move to step 5 until all three of these pass.** These are the checks that catch "CLI reported success but nothing landed on Fabric," which has been a repeated failure mode.
 
-### A. The component's run endpoint exists
+### A. The component's run endpoint exists (App URL)
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' \
      -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-     "$CLI_TARGET/<PIPELINE_ID_PASCAL>Run"
+     "$CLI_APP_URL/<PIPELINE_ID_PASCAL>Run"
 ```
 
-Expected: `200` or `405` (GET not allowed but endpoint exists). If you get `404`, the component did not land on Fabric — your deploy went somewhere else. Re-run the pre-flight (the usual culprit is a stale `.env` pointing at local Harper).
+Expected: `200` or `405` (GET not allowed but endpoint exists). If you get `404`, the component did not land on Fabric — your deploy went somewhere else, or `CLI_APP_URL` is wrong. Re-run pre-flight.
 
-### B. The target table's REST endpoint exists
+### B. The target table's REST endpoint exists (App URL)
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' \
      -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
-     "$CLI_TARGET/<TARGET_TABLE>/"
+     "$CLI_APP_URL/<TARGET_TABLE>/"
 ```
 
-Expected: `200` with body `[]`. A `404` means the schema didn't register — most commonly because `schema.graphql` has a syntax error that Fabric silently dropped. Check the component's logs via the `read_log` operation.
+Expected: `200` with body `[]`. A `404` means the schema didn't register — most commonly because `schema.graphql` has a syntax error that Fabric silently dropped. Check the component's logs via the `read_log` operation (at `$CLI_TARGET`).
 
-### C. Fabric knows about the component
+### C. Fabric knows about the component (Ops API)
 
 ```bash
 curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
@@ -122,9 +130,10 @@ All three must pass. If any fail, the pipeline is not deployed. Fix before movin
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `ECONNREFUSED` | `CLI_TARGET` port missing or wrong protocol | Re-run pre-flight step 2; confirm Application URL with user |
+| `ECONNREFUSED` | `CLI_TARGET` port missing or wrong protocol | Re-run pre-flight step 2; confirm Ops API URL with user |
 | `401 Unauthorized` | wrong creds, or `CLI_TARGET_USERNAME` has trailing whitespace | `cat -A .env` and check |
-| "Successfully deployed" but post-deploy check A returns 404 | deployed to wrong target (local Harper shadowed Fabric) | Re-run pre-flight step 1; delete any stale `.env`; re-deploy |
+| "Successfully deployed" but post-deploy check A returns 404 | deploy landed on a different cluster than verify is probing (CLI_TARGET and CLI_APP_URL don't belong to the same Fabric cluster) OR a local `.env` shadowed the secrets file | Re-run pre-flight steps 1–3; confirm both URLs came from the same Fabric Config tab; delete any stale local `.env` |
+| Pre-flight #2 returns `Not found` | `CLI_TARGET` is pointed at the Application URL, not the Ops API | Set `CLI_TARGET` to the Ops API URL (typically `:9925`) from the Fabric Config tab |
 | `SyntaxError` in `resources.js` during deploy | template not fully rendered | Re-run step 3 validation; `node --check resources.js` must pass |
 | `Cannot find module 'cron-parser'` in cluster logs | dependency missing from `package.json` | Check `package.json` against `templates/pipeline-component/package.json` |
 | `403` from `deploy_component` | creds aren't `super_user` | Cluster owner grants super_user to the agent's creds |

@@ -4,25 +4,33 @@
 //
 // Runs with env loaded via `dotenv-cli`. Exits non-zero on any failure.
 
-const { CLI_TARGET, CLI_TARGET_USERNAME, CLI_TARGET_PASSWORD } = process.env;
+const { CLI_TARGET, CLI_APP_URL, CLI_TARGET_USERNAME, CLI_TARGET_PASSWORD } = process.env;
 
 const fail = (msg) => {
 	console.error(`\n✗ preflight: ${msg}\n`);
 	process.exit(1);
 };
 const ok = (msg) => console.log(`  ✓ ${msg}`);
+const warn = (msg) => console.log(`  ⚠ ${msg}`);
 
 // --- 1. vars present ---
-for (const [k, v] of Object.entries({ CLI_TARGET, CLI_TARGET_USERNAME, CLI_TARGET_PASSWORD })) {
+for (const [k, v] of Object.entries({ CLI_TARGET, CLI_APP_URL, CLI_TARGET_USERNAME, CLI_TARGET_PASSWORD })) {
 	if (!v) fail(`${k} not set. Copy ~/.openclaw/secrets/harper.env into ./.env, or export the var.`);
 }
 
 // --- 2. shape sanity ---
-if (!CLI_TARGET.startsWith('https://')) {
-	fail(`CLI_TARGET must be https://. Got: ${CLI_TARGET}`);
+for (const [k, v] of Object.entries({ CLI_TARGET, CLI_APP_URL })) {
+	if (!v.startsWith('https://')) fail(`${k} must be https://. Got: ${v}`);
+	if (v.includes('localhost') || v.includes('127.0.0.1')) {
+		fail(`${k} points at localhost. Fabric URLs are always remote.`);
+	}
 }
-if (CLI_TARGET.includes('localhost') || CLI_TARGET.includes('127.0.0.1')) {
-	fail(`CLI_TARGET points at localhost. Fabric URLs are always remote.`);
+if (CLI_TARGET === CLI_APP_URL) {
+	warn(
+		'CLI_TARGET === CLI_APP_URL. On Fabric these are usually different host:port — ' +
+			'CLI_TARGET is the Operations API (e.g. :9925), CLI_APP_URL is the Application URL. ' +
+			'If you get 404s on GET /Pipeline/ later, this is probably why.'
+	);
 }
 ok('env vars present and shaped correctly');
 
