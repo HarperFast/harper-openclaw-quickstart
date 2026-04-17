@@ -9,8 +9,13 @@
 //   POST /FlagHumanAction          file a pending_human_action entry
 //
 // Keep these dumb. OpenClaw should do the thinking; these just persist.
-
-import { Resource, tables } from 'harperdb';
+//
+// NOTE on globals: Harper v4.7+ injects `Resource` and `tables` into the
+// module global scope at server init. Importing them from 'harperdb' returns
+// the module-time binding, which for `tables` is NOT the same object the
+// server populates at runtime — the import-time `tables` is always empty.
+// Use the globals. Matches the canonical `application-template/resources.js`
+// shipped inside the harperdb package.
 
 const now = () => new Date().toISOString();
 

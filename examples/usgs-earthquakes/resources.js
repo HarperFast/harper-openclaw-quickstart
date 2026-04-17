@@ -2,8 +2,11 @@
 //
 // Fully-rendered from templates/pipeline-component/resources.js — compare side
 // by side to see what {{PLACEHOLDER}} substitution looks like.
+//
+// `Resource` and `tables` are Harper-injected globals — do NOT import them
+// from 'harperdb'. The import returns an empty module-time binding; the
+// global is what the server populates after init.
 
-import { Resource, tables } from 'harperdb';
 import { CronExpressionParser } from 'cron-parser';
 
 const PIPELINE_ID = 'usgs-earthquakes';

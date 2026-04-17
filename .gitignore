@@ -2,3 +2,10 @@ node_modules/
 .env
 *.log
 .DS_Store
+
+# Lockfile isn't tracked — devDependencies are unpinned on purpose (harper CLI
+# + dotenv-cli only; both minor-version-compatible). Leave this to each clone.
+package-lock.json
+
+# Scaffolded pipeline outputs — per-agent/workspace, not source.
+harper-pipelines/

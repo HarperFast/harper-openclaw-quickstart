@@ -8,8 +8,11 @@
 //
 // Everything OpenClaw-specific is in `fetchFromSource`. The rest of the file
 // is canonical and should not be edited per-source.
-
-import { Resource, tables } from 'harperdb';
+//
+// `Resource` and `tables` are Harper-injected globals — do NOT import them
+// from 'harperdb'. The import returns an empty module-time binding; the
+// runtime-populated global is what you need. See harperdb's own
+// application-template/resources.js for the canonical shape.
 
 const PIPELINE_ID = '{{PIPELINE_ID}}';
 const SOURCE_NAME = '{{SOURCE_NAME}}';

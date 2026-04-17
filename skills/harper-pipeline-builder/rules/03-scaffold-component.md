@@ -41,13 +41,14 @@ This is the only per-source code. Rules:
 
 ## Validation before moving on
 
-Before you call deploy, run three sanity checks:
+Before you call deploy, run four sanity checks:
 
 1. **Dry-run the fetch function**: extract `FETCH_FN_BODY` into a standalone `fetch-test.js` in your scratch dir, run it with `node`, confirm it returns an array with >0 records and a valid `PRIMARY_KEY_FIELD` on each.
 2. **Lint the rendered resources.js**: `node --check resources.js` should pass. If it fails, you have a template-render bug — fix before deploying.
-3. **Confirm `package.json` is lean**: the scaffolded `package.json` must contain only runtime deps (usually just `cron-parser`) plus a `files` allowlist. Do NOT add `harperdb` or `dotenv-cli` — they live at the workspace root and resolve via npm's bin walk-up. A pipeline component with `harperdb` in its `devDependencies` is a scaffolding bug; fix it before deploying.
+3. **No imports of `Resource` or `tables`**: grep the rendered `resources.js` for `from 'harperdb'` and `from '@harperfast/harper'`. Both should return zero matches. `Resource` and `tables` are runtime-injected globals; the module-time imports return empty bindings and will 500 inside Resource method handlers (e.g. `tables.X is undefined`) even though deploy itself reports success and REST CRUD on the tables works. The only legitimate import is `cron-parser`. This is the single most common post-deploy footgun; if you skip this check, the pipeline endpoint will deploy green and then 500 on first run.
+4. **Confirm `package.json` is lean**: the scaffolded `package.json` must contain only runtime deps (usually just `cron-parser`) plus a `files` allowlist. Do NOT add `harperdb`, `@harperfast/harper`, or `dotenv-cli` — they live at the workspace root and resolve via npm's bin walk-up. A pipeline component with the harper package in its `devDependencies` is a scaffolding bug; fix it before deploying.
 
-Only after all three pass, move to step 4.
+Only after all four pass, move to step 4.
 
 ## Example: USGS earthquakes, fully rendered
 
