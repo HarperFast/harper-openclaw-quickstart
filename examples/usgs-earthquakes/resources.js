@@ -67,7 +67,7 @@ async function runPipeline() {
 
 async function reportRun({ runAt, status, records }) {
 	try {
-		await tables.Pipeline.patch(PIPELINE_ID, {
+		await tables.pipelines.patch(PIPELINE_ID, {
 			lastRunAt: runAt,
 			lastRunStatus: status,
 			lastRunRecords: records,
@@ -83,7 +83,7 @@ export class UsgsEarthquakesRun extends Resource {
 		return runPipeline();
 	}
 	async get() {
-		const reg = await tables.Pipeline.get(PIPELINE_ID);
+		const reg = await tables.pipelines.get(PIPELINE_ID);
 		return reg ?? { pipelineId: PIPELINE_ID, status: 'unregistered' };
 	}
 }

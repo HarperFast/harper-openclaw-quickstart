@@ -23,7 +23,7 @@ export class PipelineRegister extends Resource {
 	async post(_target, data) {
 		if (!data?.id) throw new Error('PipelineRegister requires `id`');
 
-		const existing = await tables.Pipeline.get(data.id);
+		const existing = await tables.pipelines.get(data.id);
 		const record = {
 			id: data.id,
 			sourceName: data.sourceName,
@@ -40,9 +40,9 @@ export class PipelineRegister extends Resource {
 		};
 
 		if (existing) {
-			await tables.Pipeline.patch(data.id, record);
+			await tables.pipelines.patch(data.id, record);
 		} else {
-			await tables.Pipeline.put(data.id, record);
+			await tables.pipelines.put(data.id, record);
 		}
 		return { ok: true, id: data.id, existed: Boolean(existing) };
 	}
@@ -51,7 +51,7 @@ export class PipelineRegister extends Resource {
 export class PipelineRunReport extends Resource {
 	async post(_target, data) {
 		if (!data?.id) throw new Error('PipelineRunReport requires `id`');
-		await tables.Pipeline.patch(data.id, {
+		await tables.pipelines.patch(data.id, {
 			lastRunAt: data.runAt ?? now(),
 			lastRunStatus: data.status ?? 'ok',
 			lastRunRecords: Number.isFinite(data.records) ? data.records : 0,
@@ -76,7 +76,7 @@ export class FlagHumanAction extends Resource {
 			createdAt: now(),
 			createdByAgent: data.createdByAgent ?? '',
 		};
-		await tables.PendingHumanAction.put(id, record);
+		await tables.pending_human_action.put(id, record);
 		return { ok: true, id };
 	}
 }

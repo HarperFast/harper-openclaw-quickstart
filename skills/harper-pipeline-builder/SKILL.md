@@ -10,7 +10,7 @@ description: |
 license: Apache-2.0
 metadata:
   author: harper + openclaw
-  version: '0.1.4'
+  version: '0.1.5'
 ---
 
 # harper-pipeline-builder
