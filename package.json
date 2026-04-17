@@ -1,0 +1,16 @@
+{
+  "name": "harper-openclaw-quickstart",
+  "version": "0.1.2",
+  "private": true,
+  "description": "OpenClaw + Harper pipeline-builder pattern — deploy tooling hoisted to repo root.",
+  "type": "module",
+  "scripts": {
+    "deploy:base": "cd harper-base && npm run deploy",
+    "deploy:example": "cd examples/usgs-earthquakes && npm run deploy"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "harperdb": "^4.7.20"
+  },
+  "license": "Apache-2.0"
+}

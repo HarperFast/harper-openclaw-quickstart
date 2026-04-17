@@ -59,14 +59,22 @@ curl -sS --max-time 15 \
 
 Expected: a JSON object. If you see HTML, 401, or a connection error, stop — the creds or URL are wrong. See `docs/troubleshooting.md`.
 
-### 0.4 Deploy `harper-base`
+### 0.4 Install deploy tooling at repo root, then deploy `harper-base`
+
+The Harper CLI (`harperdb`) and `dotenv-cli` live **once** at the repo root, not per component. This keeps component tarballs small and avoids a cluster-side install of the Harper CLI itself (which is what was taking "forever" in early test runs).
 
 ```bash
-cd <path-to>/harper-openclaw-quickstart/harper-base
+cd <path-to>/harper-openclaw-quickstart
+npm install --no-audit --no-fund --ignore-scripts   # skip harperdb's NATS postinstall
+
+cd harper-base
 cp ~/.openclaw/secrets/harper.env .env
-npm install
-npm run deploy
+npm run deploy                                       # resolves harperdb + dotenv from parent node_modules
 ```
+
+The `--ignore-scripts` flag matters: installing `harperdb` normally triggers a postinstall that downloads a NATS server binary we don't need for CLI-only use. Skipping it cuts install from minutes-plus to seconds.
+
+There is **no** `npm install` inside `harper-base`. It has zero runtime dependencies.
 
 ### 0.5 Verify `harper-base` landed on Fabric
 

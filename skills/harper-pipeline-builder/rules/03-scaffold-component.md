@@ -41,12 +41,13 @@ This is the only per-source code. Rules:
 
 ## Validation before moving on
 
-Before you call deploy, run two sanity checks:
+Before you call deploy, run three sanity checks:
 
 1. **Dry-run the fetch function**: extract `FETCH_FN_BODY` into a standalone `fetch-test.js` in your scratch dir, run it with `node`, confirm it returns an array with >0 records and a valid `PRIMARY_KEY_FIELD` on each.
 2. **Lint the rendered resources.js**: `node --check resources.js` should pass. If it fails, you have a template-render bug — fix before deploying.
+3. **Confirm `package.json` is lean**: the scaffolded `package.json` must contain only runtime deps (usually just `cron-parser`) plus a `files` allowlist. Do NOT add `harperdb` or `dotenv-cli` — they live at the workspace root and resolve via npm's bin walk-up. A pipeline component with `harperdb` in its `devDependencies` is a scaffolding bug; fix it before deploying.
 
-Only after both pass, move to step 4.
+Only after all three pass, move to step 4.
 
 ## Example: USGS earthquakes, fully rendered
 

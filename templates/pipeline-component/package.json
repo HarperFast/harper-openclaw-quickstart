@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "description": "Harper pipeline for {{SOURCE_NAME}}, built by OpenClaw.",
   "type": "module",
+  "files": [
+    "schema.graphql",
+    "config.yaml",
+    "resources.js"
+  ],
   "dependencies": {
     "cron-parser": "^5.0.0"
   },
   "scripts": {
-    "deploy": "dotenv -- npm run deploy:component",
-    "deploy:component": "harperdb deploy_component . restart=rolling replicated=true"
-  },
-  "devDependencies": {
-    "dotenv-cli": "^11.0.0",
-    "harperdb": "^4.7.20"
+    "deploy": "dotenv -- harperdb deploy_component . restart=rolling replicated=true"
   },
   "license": "Apache-2.0"
 }

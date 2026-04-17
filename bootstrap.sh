@@ -27,7 +27,7 @@ die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # 1. Gather creds
 # ---------------------------------------------------------------------------
-say "Step 1/6: gather Harper Fabric credentials"
+say "Step 1/7: gather Harper Fabric credentials"
 
 if [[ -z "${CLI_TARGET:-}" || -z "${CLI_TARGET_USERNAME:-}" || -z "${CLI_TARGET_PASSWORD:-}" ]]; then
   if [[ -f "$SECRETS_FILE" ]]; then
@@ -68,7 +68,7 @@ ok "creds present and shaped correctly"
 # ---------------------------------------------------------------------------
 # 2. Write secrets file
 # ---------------------------------------------------------------------------
-say "Step 2/6: write $SECRETS_FILE"
+say "Step 2/7: write $SECRETS_FILE"
 mkdir -p "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 {
@@ -82,7 +82,7 @@ ok "wrote $SECRETS_FILE (mode 600)"
 # ---------------------------------------------------------------------------
 # 3. Pre-flight: reachable + authenticated
 # ---------------------------------------------------------------------------
-say "Step 3/6: pre-flight — confirm Fabric cluster is reachable + authenticated"
+say "Step 3/7: pre-flight — confirm Fabric cluster is reachable + authenticated"
 
 preflight_response="$(curl -sS --max-time 15 \
   -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
@@ -102,9 +102,27 @@ fi
 ok "cluster reachable + authenticated"
 
 # ---------------------------------------------------------------------------
-# 4. Deploy harper-base
+# 4. Install deploy tooling (once, at repo root) + deploy harper-base
 # ---------------------------------------------------------------------------
-say "Step 4/6: deploy harper-base (registry + escape-hatch tables)"
+say "Step 4/7: install deploy tooling at repo root (small, one-time)"
+
+# Tooling (harperdb CLI + dotenv-cli) lives ONCE at the repo root, not per
+# component. Components inherit via Node's module resolution walk-up. This
+# keeps each component's tar small and keeps cluster-side installs fast.
+(
+  cd "$SCRIPT_DIR"
+  if [[ ! -d node_modules ]]; then
+    # --ignore-scripts skips harperdb's postinstall (which tries to download
+    # a NATS server binary we don't need for CLI-only use). Cuts install
+    # time from minutes-plus to seconds.
+    npm install --silent --no-audit --no-fund --ignore-scripts
+    ok "repo-root npm install completed"
+  else
+    ok "node_modules already present at repo root"
+  fi
+)
+
+say "Step 5/7: deploy harper-base (registry + escape-hatch tables)"
 
 HARPER_BASE_DIR="${SCRIPT_DIR}/harper-base"
 [[ -d "$HARPER_BASE_DIR" ]] || die "harper-base directory not found at $HARPER_BASE_DIR"
@@ -112,22 +130,20 @@ HARPER_BASE_DIR="${SCRIPT_DIR}/harper-base"
 cp "$SECRETS_FILE" "$HARPER_BASE_DIR/.env"
 ok "copied creds into harper-base/.env"
 
+# No npm install in harper-base — harperdb + dotenv-cli resolve from
+# the parent node_modules via npm's .bin walk-up. harper-base itself
+# has zero runtime dependencies and will NOT ship a node_modules dir
+# to Fabric.
 (
   cd "$HARPER_BASE_DIR"
-  if [[ ! -d node_modules ]]; then
-    npm install --silent
-    ok "npm install completed"
-  else
-    ok "node_modules already present"
-  fi
-  npm run deploy 2>&1 | tail -20
+  npm run deploy 2>&1 | tail -30
 )
 ok "harper-base deploy completed (Harper CLI reported success)"
 
 # ---------------------------------------------------------------------------
 # 5. Post-deploy verification
 # ---------------------------------------------------------------------------
-say "Step 5/6: verify harper-base tables are live on Fabric"
+say "Step 6/7: verify harper-base tables are live on Fabric"
 
 check_endpoint() {
   local table="$1"
@@ -158,7 +174,7 @@ done
 # ---------------------------------------------------------------------------
 # 6. Install skill
 # ---------------------------------------------------------------------------
-say "Step 6/6: install harper-pipeline-builder skill"
+say "Step 7/7: install harper-pipeline-builder skill"
 
 mkdir -p "$SKILLS_DIR"
 SKILL_SRC="${SCRIPT_DIR}/skills/harper-pipeline-builder"

@@ -59,9 +59,11 @@ Only after all four pre-flight checks pass, proceed to deploy.
 
 ```bash
 cd <workspace>/harper-pipelines/<PIPELINE_ID>/
-npm install
-npm run deploy
+npm install           # only the component's runtime deps (cron-parser, etc.)
+npm run deploy        # harperdb + dotenv resolve from the parent workspace's node_modules
 ```
+
+**Do not add `harperdb` or `dotenv-cli` to the component's `package.json`.** They are deploy-time tooling, installed once at the workspace root. Adding them per-component causes a 600+ package install for tooling that isn't part of the component at all — and because Fabric sometimes installs every declared dependency cluster-side, it can push `harperdb` into the running cluster.
 
 `npm run deploy` runs `dotenv -- harperdb deploy_component . restart=rolling replicated=true` under the hood. That:
 

@@ -10,6 +10,15 @@ The skill must be in one of OpenClaw's skill-loading locations:
 
 And the top of `SKILL.md` must have the frontmatter (the `---` block with `name:` and `description:`). Without frontmatter, OpenClaw won't load it.
 
+## `npm install` takes forever / hangs on "installing NATS server"
+
+The `harperdb` npm package has a postinstall script that downloads and extracts a NATS server binary — needed if you're running Harper locally, **not** needed when you're just using the CLI to deploy to a remote Fabric cluster. Two fixes:
+
+1. **Use `--ignore-scripts`** when installing deploy tooling: `npm install --ignore-scripts`. `bootstrap.sh` already does this.
+2. **Only declare `harperdb` once, at the repo root.** Do NOT add it to individual component `package.json`s. The skill is set up so components inherit the CLI via Node's module resolution walk-up. If you see `harperdb` in a component's `devDependencies`, remove it.
+
+If your install is slow anyway, check your network — the repo-root install is ~250MB on disk and ~611 packages, mostly because `harperdb` has a wide dependency footprint.
+
 ## Deploy says "Successfully deployed" but nothing shows up on Fabric
 
 **This is the #1 silent failure.** The CLI reports success, the agent reports success, and yet `$CLI_TARGET/<TARGET_TABLE>/` returns 404. Almost always one of:
