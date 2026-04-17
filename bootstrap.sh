@@ -12,7 +12,9 @@
 #      single-arg-vs-two-arg Resource.post() defects and @table(table:) schema
 #      override mismatches — both of which pass "deploy + GET /Table/" but
 #      silently drop data on first POST.
-#   7. Install skill into ~/.openclaw/skills/harper-pipeline-builder/
+#   7. Install harper-pipeline-builder + harper-best-practices skills into
+#      ~/.openclaw/skills/  (the latter via `npm create harper@latest` so it's
+#      always fresh against Harper's current SDK)
 #   8. Print AGENTS.md fragment for the user to paste into their workspace
 #
 # Designed to be run by humans OR by an agent. If any step fails, it stops with
@@ -337,11 +339,26 @@ curl -sS --max-time 10 -o /dev/null \
   "$CLI_APP_URL/PendingHumanAction/$probe_id" || true
 
 # ---------------------------------------------------------------------------
-# 7. Install skill
+# 7. Install skills
+#
+# Two skills get installed to ~/.openclaw/skills/:
+#   - harper-pipeline-builder (this repo)  — pattern for building OpenClaw→Harper
+#     pipelines, copied from skills/ in this repo.
+#   - harper-best-practices (Harper, upstream) — canonical guidance for writing
+#     schemas, Resource classes, and deployment. Fetched via `npm create
+#     harper@latest` so it's always current against Harper's latest SDK.
+#
+# The harper-pipeline-builder skill REFERENCES harper-best-practices (see
+# rules/03-scaffold-component.md, top of file). Installing pipeline-builder
+# without best-practices is a known-bad state: agents will deviate from
+# canonical patterns and reproduce the defect classes documented in
+# docs/troubleshooting.md. Fail loud if best-practices install fails.
 # ---------------------------------------------------------------------------
-say "Step 8/8: install harper-pipeline-builder skill"
+say "Step 8/8: install harper-pipeline-builder + harper-best-practices skills"
 
 mkdir -p "$SKILLS_DIR"
+
+# --- harper-pipeline-builder (local) ----------------------------------------
 SKILL_SRC="${SCRIPT_DIR}/skills/harper-pipeline-builder"
 SKILL_DST="${SKILLS_DIR}/harper-pipeline-builder"
 
@@ -349,10 +366,55 @@ SKILL_DST="${SKILLS_DIR}/harper-pipeline-builder"
 
 if [[ -d "$SKILL_DST" ]]; then
   rm -rf "$SKILL_DST"
-  ok "removed existing skill (re-install)"
+  ok "removed existing harper-pipeline-builder skill (re-install)"
 fi
 cp -r "$SKILL_SRC" "$SKILL_DST"
-ok "installed skill to $SKILL_DST"
+ok "installed harper-pipeline-builder to $SKILL_DST"
+
+# --- harper-best-practices (upstream, via npm create harper@latest) ---------
+HBP_DST="${SKILLS_DIR}/harper-best-practices"
+
+if [[ -d "$HBP_DST" && -z "${FORCE_REINSTALL_SKILLS:-}" ]]; then
+  ok "harper-best-practices already installed at $HBP_DST (set FORCE_REINSTALL_SKILLS=1 to refresh)"
+else
+  # Scratch dir — create-harper writes a full project tree and we only want
+  # the one skill directory out of it. Clean up unconditionally at the end.
+  HBP_SCRATCH="$(mktemp -d -t harper-bp-fetch.XXXXXX)"
+  trap 'rm -rf "$HBP_SCRATCH"' EXIT
+
+  printf '    fetching harper-best-practices via npm create harper@latest (can take ~30s)...\n'
+  (
+    cd "$HBP_SCRATCH"
+    # --yes skips the interactive TUI; the scaffolder still writes the skill.
+    # Redirect stderr+stdout to a log so we can fish out a failure cause if
+    # needed, without spamming the console with its spinner output.
+    if ! npm create harper@latest -- --yes >"$HBP_SCRATCH/.create-harper.log" 2>&1; then
+      cat "$HBP_SCRATCH/.create-harper.log" >&2
+      die "npm create harper@latest failed. See output above. (Does the machine have network access + npm?)"
+    fi
+  )
+
+  # The scaffold lands the skill at <scratch>/<project>/.agents/skills/harper-best-practices/.
+  # Project name isn't deterministic — locate by skill path.
+  hbp_src="$(find "$HBP_SCRATCH" -maxdepth 6 -type d -name 'harper-best-practices' -path '*/.agents/skills/*' 2>/dev/null | head -1)"
+  if [[ -z "$hbp_src" || ! -d "$hbp_src" ]]; then
+    die "npm create harper@latest completed but harper-best-practices skill not found under $HBP_SCRATCH. Harper may have changed the install layout — check the scaffolder output."
+  fi
+
+  # Validate it's a real skill (has SKILL.md with frontmatter).
+  if [[ ! -f "$hbp_src/SKILL.md" ]] || ! grep -q '^name: harper-best-practices' "$hbp_src/SKILL.md"; then
+    die "Found $hbp_src but SKILL.md is missing or has no frontmatter. Rejecting as unsafe."
+  fi
+
+  if [[ -d "$HBP_DST" ]]; then
+    rm -rf "$HBP_DST"
+  fi
+  cp -rL "$hbp_src" "$HBP_DST"
+  ok "installed harper-best-practices to $HBP_DST"
+
+  rm -rf "$HBP_SCRATCH"
+  trap - EXIT
+fi
 
 # ---------------------------------------------------------------------------
 # Done

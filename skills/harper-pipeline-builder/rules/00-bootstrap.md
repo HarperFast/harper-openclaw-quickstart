@@ -13,7 +13,7 @@ cd <path-to>/harper-openclaw-quickstart
 ./bootstrap.sh
 ```
 
-The script gathers creds, writes `~/.openclaw/secrets/harper.env`, deploys `harper-base`, verifies the deploy actually landed on Fabric, and installs the skill. It's idempotent — safe to re-run.
+The script gathers creds, writes `~/.openclaw/secrets/harper.env`, deploys `harper-base`, verifies the deploy actually landed on Fabric, and installs two skills into `~/.openclaw/skills/`: `harper-pipeline-builder` (this skill) and `harper-best-practices` (Harper's canonical guidance for schemas, Resource classes, and Fabric deploy — fetched via `npm create harper@latest` so it stays current). It's idempotent — safe to re-run. To force a refresh of the best-practices skill, set `FORCE_REINSTALL_SKILLS=1`.
 
 If the script exits successfully, skip to step 1.
 
@@ -138,6 +138,26 @@ curl -sS -o /dev/null \
   -X PATCH -d '{"status":"resolved","resolvedBy":"manual-bootstrap"}' \
   "$CLI_APP_URL/PendingHumanAction/$id"
 ```
+
+### 0.7 Install both skills
+
+Install `harper-pipeline-builder` (this skill) and `harper-best-practices` (Harper's canonical guidance) into `~/.openclaw/skills/`. Having **both** is required — the pipeline-builder rules reference patterns in best-practices explicitly, and deviating from those patterns is what produced the v0.1.3/v0.1.4/v0.1.5 defect classes.
+
+```bash
+mkdir -p ~/.openclaw/skills
+
+# 1. harper-pipeline-builder (from this repo)
+cp -r <path-to>/harper-openclaw-quickstart/skills/harper-pipeline-builder ~/.openclaw/skills/
+
+# 2. harper-best-practices (from npm create harper@latest)
+scratch=$(mktemp -d)
+(cd "$scratch" && npm create harper@latest -- --yes >/dev/null 2>&1)
+hbp_src=$(find "$scratch" -maxdepth 6 -type d -name 'harper-best-practices' -path '*/.agents/skills/*' | head -1)
+cp -rL "$hbp_src" ~/.openclaw/skills/
+rm -rf "$scratch"
+```
+
+Verify both SKILL.md files start with a `---` frontmatter block. Without frontmatter, agents won't load the skill.
 
 ## When to re-run bootstrap
 

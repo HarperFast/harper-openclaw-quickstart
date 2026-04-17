@@ -2,7 +2,7 @@
 
 **Goal:** copy `templates/pipeline-component/` into a fresh working directory and render every `{{PLACEHOLDER}}`.
 
-Before writing any Resource class, read the canonical patterns in skills/harper-best-practices/rules/custom-resources.md and extending-tables.md. Those files ship from npm create harper@latest and describe Harper's official patterns. Deviations are almost always bugs; the quickstart has burned three release cuts chasing defects that harper-best-practices documents correctly.
+Before writing any Resource class, read the canonical patterns in `~/.openclaw/skills/harper-best-practices/rules/custom-resources.md` and `extending-tables.md`. Those files ship from `npm create harper@latest` and describe Harper's official patterns. `bootstrap.sh` installs this skill alongside `harper-pipeline-builder`; if it's missing, re-run bootstrap or run `npm create harper@latest` manually (see `rules/00-bootstrap.md` §0.7). Deviations from these patterns are almost always bugs — the quickstart has burned three release cuts chasing defects that harper-best-practices documents correctly.
 
 ## Working directory
 
