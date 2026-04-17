@@ -26,7 +26,6 @@ Never scaffold over an existing directory without confirming with the user. If `
 | `SCHEDULE_CRON` | standard 5-field cron. Default `*/15 * * * *`. Never less than 1 minute; respect upstream rate limits. |
 | `BUSINESS_OBJECTIVE` | the user's original prompt, short. |
 | `FETCH_FN_BODY` | a JavaScript snippet. See below. |
-| `HARPER_BASE_URL` | from `HARPER_URL` env var. |
 
 ## Writing `FETCH_FN_BODY`
 

@@ -10,6 +10,24 @@ The skill must be in one of OpenClaw's skill-loading locations:
 
 And the top of `SKILL.md` must have the frontmatter (the `---` block with `name:` and `description:`). Without frontmatter, OpenClaw won't load it.
 
+## Deploy says "Successfully deployed" but nothing shows up on Fabric
+
+**This is the #1 silent failure.** The CLI reports success, the agent reports success, and yet `$CLI_TARGET/<TARGET_TABLE>/` returns 404. Almost always one of:
+
+1. **Local `.env` overriding the global secrets file.** The component directory had a `.env` (or the Harper CLI found a default) pointing at `http://localhost:9925` — the agent deployed to a local Harper instance, not Fabric. Fix: `cat <component>/.env` and confirm `CLI_TARGET` is `https://...`. If the file doesn't exist, `cp ~/.openclaw/secrets/harper.env <component>/.env`.
+2. **`CLI_TARGET` missing the port.** Fabric clusters sometimes expose the Operations API on a non-default port (e.g. `:9926`). The Application URL in the Fabric Config tab is authoritative — copy it verbatim, port included.
+3. **Wrong protocol.** Fabric is always `https://`. A `CLI_TARGET=http://...` will appear to connect but won't match auth, and you'll end up on a different surface.
+
+The pre-flight checks in `rules/04-deploy.md` catch all three. Skipping them is what produces this failure mode.
+
+## Deploy fails with `ECONNREFUSED`
+
+`CLI_TARGET` is unreachable. Re-run the pre-flight checks:
+
+1. `source .env && echo "$CLI_TARGET"` — confirm you're pointing at the right URL (not `localhost`, not empty).
+2. `curl -I "$CLI_TARGET"` — should return an HTTP status, not hang.
+3. If `CLI_TARGET` is the cluster's Application URL and still refuses, the cluster may be paused — check the Fabric UI.
+
 ## Deploy fails with `Cannot find module 'harperdb'`
 
 Your scaffolded `package.json` is missing the `harperdb` devDependency. Harper runs `npm install` in the component directory after deploy, so the dependency must be declared. Compare against `templates/pipeline-component/package.json`.
@@ -32,7 +50,7 @@ When a human unblocks a `pending_human_action`:
 
 ## Multiple clusters, multiple OpenClaw instances
 
-Each OpenClaw workspace points at one Harper cluster (via `HARPER_URL`). If you need one agent managing multiple clusters, run a separate OpenClaw workspace per cluster — easier than parameterizing the skill.
+Each OpenClaw workspace points at one Harper cluster (via `CLI_TARGET`). If you need one agent managing multiple clusters, run a separate OpenClaw workspace per cluster — easier than parameterizing the skill.
 
 ## "The agent keeps hallucinating source URLs"
 

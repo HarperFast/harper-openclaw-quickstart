@@ -28,7 +28,10 @@ You are building **durable data pipelines on Harper**. The user wants data flowi
 
 ## The workflow
 
-Follow these five steps in order. Each step has its own rule file with details.
+Follow these steps in order. Each step has its own rule file with details.
+
+0. **Bootstrap** — `rules/00-bootstrap.md`
+   One-time-per-workspace setup: gather creds, deploy `harper-base`, verify the cluster is reachable. If this hasn't been done in the current workspace, do it before anything else.
 
 1. **Research** — `rules/01-research-sources.md`
    Given the user's business objective, identify candidate API-backed sources. Produce a `SourceCandidate` manifest per source.
@@ -40,18 +43,19 @@ Follow these five steps in order. Each step has its own rule file with details.
    Copy `templates/pipeline-component/` and fill in every `{{PLACEHOLDER}}`. This is the per-source work.
 
 4. **Deploy** — `rules/04-deploy.md`
-   Push the scaffolded component to a git repo and call Harper's `deploy_component` operation with the git URL.
+   Run `npm run deploy` from inside the scaffolded component directory, which uses the Harper CLI to upload to the Fabric cluster at `$CLI_TARGET`. Includes mandatory pre-flight and post-deploy checks.
 
 5. **Verify + register** — `rules/05-verify-and-register.md`
    Trigger one manual run, confirm records land in the target table, insert the row into `pipelines`, and report back to the user.
 
 ## Required context the user (or `AGENTS.md`) must provide
 
-- `HARPER_URL` — Harper cluster base URL
-- `HARPER_USERNAME`, `HARPER_PASSWORD` — cluster super_user creds
-- A git remote you can push scaffolded components to (default: a personal GitHub org for the cluster owner; ask once if not set)
+- `CLI_TARGET` — Harper Fabric Application URL (the cluster URL, `https://...`)
+- `CLI_TARGET_USERNAME`, `CLI_TARGET_PASSWORD` — cluster super_user creds
 
-If any of these are missing, stop and ask for them. Do not proceed with fake values.
+These are the exact names the Harper CLI expects. **Do not rename them or introduce aliases like `HARPER_URL`** — every pipeline component inherits them from `.env`, and renaming breaks the CLI.
+
+If any are missing, stop and ask. Do not proceed with placeholder values. `CLI_TARGET` pointing at `localhost` is a mistake — Fabric URLs are always `https://` and remote.
 
 ## What "done" looks like
 
@@ -76,6 +80,7 @@ If any of those are false, the pipeline is not done. Either fix it or file a `pe
 
 ## Read next
 
+- `rules/00-bootstrap.md`
 - `rules/01-research-sources.md`
 - `rules/02-evaluate-source.md`
 - `rules/03-scaffold-component.md`

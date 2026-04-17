@@ -55,50 +55,23 @@ You'll need:
 
 Sign in at fabric.harper.fast → create org → create cluster (free tier) → set a cluster username + password → grab the **Application URL** from the Config tab.
 
-### 2. Bootstrap Harper with the registry + escape-hatch
-
-This creates the `pipelines` and `pending_human_action` tables OpenClaw will use to record its work.
+### 2. Bootstrap — one command
 
 ```bash
-git clone https://github.com/<your-org>/harper-openclaw-quickstart
-cd harper-openclaw-quickstart/harper-base
-cp .env.example .env
-# Edit .env with your cluster credentials (CLI_TARGET, CLI_TARGET_USERNAME, CLI_TARGET_PASSWORD)
-npm install
-npm run deploy
+git clone https://github.com/HarperFast/harper-openclaw-quickstart
+cd harper-openclaw-quickstart
+./bootstrap.sh
 ```
 
-Verify:
+`bootstrap.sh` does everything: prompts for your cluster creds, writes `~/.openclaw/secrets/harper.env`, deploys `harper-base` (with pre-flight + post-deploy verification), installs the skill into `~/.openclaw/skills/`, and prints the AGENTS.md fragment for you to paste into your OpenClaw workspace.
 
-```bash
-curl -u $CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD $CLI_TARGET/pipelines
-# → []
-curl -u $CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD $CLI_TARGET/pending_human_action
-# → []
-```
+It's idempotent — safe to re-run.
 
-### 3. Install the OpenClaw skill
+If you'd rather do it manually, see [`skills/harper-pipeline-builder/rules/00-bootstrap.md`](./skills/harper-pipeline-builder/rules/00-bootstrap.md).
 
-Copy the skill into your OpenClaw workspace (or `~/.openclaw/skills/`):
+### 3. Paste the AGENTS.md fragment
 
-```bash
-cp -r skills/harper-pipeline-builder ~/.openclaw/skills/
-```
-
-Then add these lines to your OpenClaw workspace `AGENTS.md` so the agent knows Harper is available:
-
-```markdown
-## Harper data layer
-
-I have a Harper cluster available for building durable data pipelines.
-When the user asks me to find a data source, build a pipeline, or ingest
-something on a schedule, I should use the `harper-pipeline-builder` skill.
-
-Credentials are in ~/.openclaw/secrets/harper.env:
-  HARPER_URL, HARPER_USERNAME, HARPER_PASSWORD
-```
-
-Drop your cluster creds into `~/.openclaw/secrets/harper.env` (same three vars as `.env`).
+Bootstrap prints a fragment — append it to your OpenClaw workspace `AGENTS.md` (typically `~/.openclaw/AGENTS.md`). The fragment tells the agent that a Harper cluster is available and which skill to use.
 
 ### 4. Hello world: ask OpenClaw to build a pipeline
 
@@ -111,8 +84,8 @@ What happens:
 1. OpenClaw reads the `harper-pipeline-builder` skill.
 2. It inspects the USGS API (it's public, GeoJSON, no auth — the happiest path).
 3. It fills in the `pipeline-component` template with an `Earthquake` schema and an ingest function.
-4. It calls Harper's `deploy_component` operation with the component URL.
-5. It inserts a row into `pipelines` recording what it built.
+4. It runs `npm run deploy` in the new component directory, which uploads to Fabric via the Harper CLI, with pre-flight and post-deploy verification around it.
+5. It inserts a row into `Pipeline` recording what it built.
 6. It polls the new `/Earthquake` endpoint and confirms data is flowing.
 7. It reports back: "pipeline live, 147 records in the first pull, next run at 14:15 UTC."
 
@@ -131,17 +104,21 @@ See [`examples/`](./examples/) for a worked contractor-registration example.
 ```
 harper-openclaw-quickstart/
 ├── README.md                    ← you are here
+├── bootstrap.sh                 ← one-command install
 ├── harper-base/                 ← the Harper component you deploy once per cluster
-│   ├── schema.graphql              (pipelines + pending_human_action tables)
+│   ├── schema.graphql              (Pipeline + PendingHumanAction tables)
 │   ├── resources.js                (small helpers OpenClaw calls)
 │   ├── config.yaml
 │   ├── package.json
+│   ├── scripts/
+│   │   ├── preflight.mjs           (runs before deploy — verifies target)
+│   │   └── verify.mjs              (runs after deploy — verifies tables are live)
 │   └── .env.example
 ├── skills/
 │   └── harper-pipeline-builder/ ← the OpenClaw skill
 │       ├── SKILL.md                (how the agent should think)
 │       ├── AGENTS.md               (drop-in fragment for workspace AGENTS.md)
-│       ├── rules/                  (per-step rules — research, evaluate, scaffold, deploy, verify)
+│       ├── rules/                  (per-step rules — bootstrap, research, evaluate, scaffold, deploy, verify)
 │       └── prompts/
 ├── templates/
 │   └── pipeline-component/      ← template OpenClaw copies + fills in per source
@@ -162,7 +139,7 @@ harper-openclaw-quickstart/
 
 - **Durable.** The pipeline keeps running after the agent disconnects.
 - **Zero glue code.** `@table @export` gives you REST + WebSocket CRUD for free — your funnel can pull from `/ContractorRegistration?state=CO` the minute records start landing.
-- **One-call deploy.** `deploy_component` accepts a git URL. OpenClaw doesn't need CI or container infra.
+- **One-call deploy.** `npm run deploy` uploads the component directory straight to Fabric. No git URL, no CI, no container infra.
 - **Replicated by default.** Set `replicated: true` and your pipeline runs across the cluster.
 - **Real-time built in.** WebSockets on every table. Your downstream systems can subscribe instead of polling.
 
