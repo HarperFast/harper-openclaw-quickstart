@@ -102,6 +102,43 @@ Both must be `200`. If either is `404`, one of two things is wrong: (a) the depl
 
 Fabric sometimes needs a few seconds after a successful deploy before endpoints are live. Retry up to 5 times, 5 seconds apart, before declaring failure.
 
+### 0.6 Round-trip a Resource method — body preservation check
+
+**Do not skip this.** `GET /Table/` returning 200 is not proof the pipeline will work. Three separate defect classes (tables.* undefined, schema-name-override mismatch, two-arg Resource.post signature) have shipped past this check historically. The round-trip catches all three.
+
+```bash
+marker="probe-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+payload=$(cat <<EOF
+{"sourceName":"bootstrap-probe","sourceUrl":"https://example.invalid","businessObjective":"$marker","blocker":"other","blockerDetail":"bootstrap round-trip","suggestedNextStep":"none","createdByAgent":"manual-bootstrap"}
+EOF
+)
+
+# POST — must return 200 with {"id": "..."}
+post_resp=$(curl -sS -w '\n%{http_code}' \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST -d "$payload" \
+  "$CLI_APP_URL/FlagHumanAction")
+echo "$post_resp"
+
+# Extract id, then GET the row back
+id=$(printf '%s' "$post_resp" | head -n1 | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("id",""))')
+curl -sS -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  "$CLI_APP_URL/PendingHumanAction/$id" | python3 -m json.tool
+```
+
+The row returned by `GET /PendingHumanAction/$id` must contain `"businessObjective": "$marker"` with the exact marker you sent. If the field is empty or the row has no body fields at all, one of the two defects in `docs/troubleshooting.md` → "Resource method returns 200 but stored record is empty" applies. Fix harper-base/resources.js or harper-base/schema.graphql before moving on.
+
+Cleanup: mark the probe row resolved so it doesn't pollute the human-review queue:
+
+```bash
+curl -sS -o /dev/null \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PATCH -d '{"status":"resolved","resolvedBy":"manual-bootstrap"}' \
+  "$CLI_APP_URL/PendingHumanAction/$id"
+```
+
 ## When to re-run bootstrap
 
 - User switched to a new Fabric cluster

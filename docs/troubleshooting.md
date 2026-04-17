@@ -64,6 +64,39 @@ This means the component deployed correctly but `CLI_APP_URL` is wrong. The tabl
 2. `curl -I "$CLI_TARGET"` — should return an HTTP status, not hang.
 3. If `CLI_TARGET` is the cluster's Application URL and still refuses, the cluster may be paused — check the Fabric UI.
 
+## Resource method returns 200 but stored record is empty
+
+Symptom: `POST /FlagHumanAction` (or `POST /PipelineRegister`, etc.) returns HTTP 200 with a plausible response body like `{"ok": true, "id": "..."}`, but when you `GET /PendingHumanAction/<id>` the row exists with all fields blank. `bootstrap.sh` Step 7 is the one that catches this; if you're hitting it in production, the same root cause applies.
+
+Two distinct defect classes cause this, and they look identical from the HTTP layer:
+
+**1. POST handler declared as `post(target, data)` instead of `post(data)`.** For bare `POST /ResourceName` requests, Harper passes the request body as the **single positional argument** to your instance `post()`. If you declare two args — a common mistake because `node_modules/harperdb/resources/Resource.d.ts` line 104 shows a two-arg signature — then `target` receives the body and `data` is `undefined`. Your handler writes `{id: data?.id, sourceName: data?.sourceName, ...}` which becomes `{id: undefined, sourceName: undefined, ...}`. The row gets created (because `crypto.randomUUID()` fallbacks provide *something*), but with empty fields.
+
+**Fix:** single-arg only. Match Harper's own `node_modules/harperdb/application-template/resources.js`:
+```js
+export class FlagHumanAction extends Resource {
+    async post(data) {  // single argument. NOT (target, data).
+        await tables.PendingHumanAction.put(id, record);
+    }
+}
+```
+
+**2. Schema uses `@table(table: "snake_case_name")` override.** Harper's `tables` global keys by the **underlying table name** from the override, not the GraphQL type name. So `tables.PendingHumanAction` is `undefined` while `tables.pending_human_action` works. The REST router is unaffected (it uses the type name), which is why `GET /PendingHumanAction/` returns 200 — but your Resource method code references the wrong key and `tables.PendingHumanAction.put(...)` throws `Cannot read properties of undefined`. The request fails *inside* your handler, but the error often isn't surfaced cleanly.
+
+**Fix:** drop the `@table(table:)` override. Let the GraphQL type name be the table name.
+```graphql
+# Wrong:
+type PendingHumanAction @table(table: "pending_human_action") @export { ... }
+# Right:
+type PendingHumanAction @table @export { ... }
+```
+
+**How to confirm which one you're hitting:** `POST` a payload with a recognizable marker field (e.g. `{"businessObjective":"test-$(uuidgen)"}`), `GET` the row back, check:
+- If `businessObjective` is empty and `id` is present → **defect 1** (two-arg signature dropped the body).
+- If POST itself returns 500 with "Cannot read properties of undefined" → **defect 2** (schema override mismatch).
+
+**Meta-rule:** when writing new Resource classes, start from `npm create harper@latest` and follow `harper-best-practices/rules/custom-resources.md`. These patterns are canonical and both defects above exist solely because we deviated from them.
+
 ## Deploy fails with `Cannot find module 'harperdb'`
 
 Your scaffolded `package.json` is missing the `harperdb` devDependency. Harper runs `npm install` in the component directory after deploy, so the dependency must be declared. Compare against `templates/pipeline-component/package.json`.

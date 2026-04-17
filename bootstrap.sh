@@ -7,8 +7,13 @@
 #   3. Pre-flight: confirm cluster reachable + authenticated
 #   4. Deploy harper-base (registry + escape-hatch tables)
 #   5. Post-deploy: confirm Pipeline + PendingHumanAction endpoints exist
-#   6. Install skill into ~/.openclaw/skills/harper-pipeline-builder/
-#   7. Print AGENTS.md fragment for the user to paste into their workspace
+#   6. Resource-method round-trip: POST /FlagHumanAction, GET it back, assert
+#      body fields were preserved end-to-end. This is the check that catches
+#      single-arg-vs-two-arg Resource.post() defects and @table(table:) schema
+#      override mismatches — both of which pass "deploy + GET /Table/" but
+#      silently drop data on first POST.
+#   7. Install skill into ~/.openclaw/skills/harper-pipeline-builder/
+#   8. Print AGENTS.md fragment for the user to paste into their workspace
 #
 # Designed to be run by humans OR by an agent. If any step fails, it stops with
 # a specific error and does not proceed silently.
@@ -27,7 +32,7 @@ die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # 1. Gather creds
 # ---------------------------------------------------------------------------
-say "Step 1/7: gather Harper Fabric credentials"
+say "Step 1/8: gather Harper Fabric credentials"
 
 if [[ -z "${CLI_TARGET:-}" || -z "${CLI_APP_URL:-}" || -z "${CLI_TARGET_USERNAME:-}" || -z "${CLI_TARGET_PASSWORD:-}" ]]; then
   if [[ -f "$SECRETS_FILE" ]]; then
@@ -86,7 +91,7 @@ ok "creds present and shaped correctly"
 # ---------------------------------------------------------------------------
 # 2. Write secrets file
 # ---------------------------------------------------------------------------
-say "Step 2/7: write $SECRETS_FILE"
+say "Step 2/8: write $SECRETS_FILE"
 mkdir -p "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 {
@@ -101,7 +106,7 @@ ok "wrote $SECRETS_FILE (mode 600)"
 # ---------------------------------------------------------------------------
 # 3. Pre-flight: reachable + authenticated
 # ---------------------------------------------------------------------------
-say "Step 3/7: pre-flight — confirm Fabric cluster is reachable + authenticated"
+say "Step 3/8: pre-flight — confirm Fabric cluster is reachable + authenticated"
 
 # Probe the Operations API (CLI_TARGET). It must respond to describe_all with
 # valid JSON, not a 404 page, HTML login screen, or "Not found" string.
@@ -144,7 +149,7 @@ ok "CLI_APP_URL reachable (HTTP $app_status)"
 # ---------------------------------------------------------------------------
 # 4. Install deploy tooling (once, at repo root) + deploy harper-base
 # ---------------------------------------------------------------------------
-say "Step 4/7: install deploy tooling at repo root (small, one-time)"
+say "Step 4/8: install deploy tooling at repo root (small, one-time)"
 
 # Tooling (harperdb CLI + dotenv-cli) lives ONCE at the repo root, not per
 # component. Components inherit via Node's module resolution walk-up. This
@@ -162,7 +167,7 @@ say "Step 4/7: install deploy tooling at repo root (small, one-time)"
   fi
 )
 
-say "Step 5/7: deploy harper-base (registry + escape-hatch tables)"
+say "Step 5/8: deploy harper-base (registry + escape-hatch tables)"
 
 HARPER_BASE_DIR="${SCRIPT_DIR}/harper-base"
 [[ -d "$HARPER_BASE_DIR" ]] || die "harper-base directory not found at $HARPER_BASE_DIR"
@@ -183,7 +188,7 @@ ok "harper-base deploy completed (Harper CLI reported success)"
 # ---------------------------------------------------------------------------
 # 5. Post-deploy verification
 # ---------------------------------------------------------------------------
-say "Step 6/7: verify harper-base tables are live on Fabric"
+say "Step 6/8: verify harper-base tables are live on Fabric"
 
 check_endpoint() {
   local table="$1"
@@ -213,9 +218,128 @@ for attempt in $(seq 1 $max_attempts); do
 done
 
 # ---------------------------------------------------------------------------
-# 6. Install skill
+# 6.5. Resource-method round-trip: POST /FlagHumanAction, GET /PendingHumanAction/<id>,
+#      assert body fields actually landed. This is the check that catches
+#      single-arg-vs-two-arg Resource.post() defects and @table(table:) schema
+#      override mismatches.
+#
+#      History: v0.1.3 shipped a tables.* undefined defect; v0.1.4 shipped a
+#      schema-override mismatch; v0.1.5 shipped a two-arg post signature that
+#      silently dropped body fields. All three passed "deploy succeeded + GET
+#      /Table/ 200" and failed here. Keep this check.
 # ---------------------------------------------------------------------------
-say "Step 7/7: install harper-pipeline-builder skill"
+say "Step 7/8: Resource-method round-trip (body preservation check)"
+
+# Marker string the round-trip will assert on. Using a UUID so a stale row from
+# a prior run never matches a fresh assertion.
+PROBE_MARKER="bootstrap-probe-$(python3 -c 'import uuid; print(uuid.uuid4())')"
+PROBE_BODY=$(python3 -c "
+import json
+print(json.dumps({
+    'sourceName': 'harper-openclaw-bootstrap-probe',
+    'sourceUrl': 'https://example.invalid/probe',
+    'businessObjective': '$PROBE_MARKER',
+    'blocker': 'other',
+    'blockerDetail': 'bootstrap Resource-method round-trip probe — safe to ignore or delete',
+    'suggestedNextStep': 'no action required',
+    'createdByAgent': 'bootstrap.sh',
+}))
+")
+
+# POST the probe. Capture HTTP status + body separately so a 500 gives a useful
+# error message.
+post_status="$(curl -sS --max-time 15 \
+  -o /tmp/harper-probe-post.body \
+  -w '%{http_code}' \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X POST \
+  -d "$PROBE_BODY" \
+  "$CLI_APP_URL/FlagHumanAction" || echo "000")"
+post_body="$(cat /tmp/harper-probe-post.body 2>/dev/null || true)"
+rm -f /tmp/harper-probe-post.body
+
+if [[ "$post_status" != "200" && "$post_status" != "201" ]]; then
+  printf '    POST /FlagHumanAction → HTTP %s\n    body: %s\n' "$post_status" "$(printf '%s' "$post_body" | head -c 400)"
+  die "POST /FlagHumanAction failed. harper-base tables are reachable (Step 6 passed), but the Resource method is 500ing. This is the v0.1.3-era 'tables.* undefined' defect class — check harper-base/resources.js and harper-base/schema.graphql against skills/harper-best-practices canonical patterns. See docs/troubleshooting.md 'Resource method returns 200 but stored record is empty'."
+fi
+
+# Parse the returned id. Harper's FlagHumanAction returns {ok: true, id: "..."}.
+probe_id="$(printf '%s' "$post_body" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(d.get("id") or "")' 2>/dev/null || true)"
+if [[ -z "$probe_id" ]]; then
+  printf '    POST /FlagHumanAction body: %s\n' "$(printf '%s' "$post_body" | head -c 400)"
+  die "POST /FlagHumanAction returned HTTP $post_status but the response body had no 'id' field. Either Resource.post() is not returning its expected shape, or the response was truncated."
+fi
+ok "POST /FlagHumanAction → HTTP $post_status, id=$probe_id"
+
+# GET the row back. Fabric can take a moment to index writes — retry briefly.
+probe_get=""
+for attempt in 1 2 3 4 5; do
+  probe_get="$(curl -sS --max-time 15 \
+    -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+    "$CLI_APP_URL/PendingHumanAction/$probe_id" || true)"
+  # A 404 returns HTML or "Not found" — check for a known JSON field instead.
+  if printf '%s' "$probe_get" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); assert "id" in d' 2>/dev/null; then
+    break
+  fi
+  if [[ $attempt -eq 5 ]]; then
+    printf '    GET /PendingHumanAction/%s → %s\n' "$probe_id" "$(printf '%s' "$probe_get" | head -c 400)"
+    die "Wrote FlagHumanAction id=$probe_id but GET /PendingHumanAction/$probe_id never returned a row. POST is not actually persisting — schema name vs. tables-global key mismatch, or FlagHumanAction.post() isn't awaiting tables.PendingHumanAction.put()."
+  fi
+  sleep 2
+done
+
+# Round-trip the body. v0.1.5's defect: POST returned 200 with an id, but GET
+# showed all body fields empty because Resource.post(target, data) captured the
+# body in `target` and left `data` undefined. We assert the specific marker we
+# sent came back on the row.
+#
+# f-string note: the marker interpolation extracts to a variable first — older
+# Python (3.11-) rejects backslashes inside f-string braces, which bit us in
+# v0.2.0's validation script. Keeping the interpolation trivial here.
+python3 - <<PYEOF || die "Round-trip body assertion failed. See message above."
+import json, sys
+body = json.loads('''$probe_get''')
+expected_marker = '$PROBE_MARKER'
+actual_marker = body.get('businessObjective') or ''
+actual_source = body.get('sourceName') or ''
+actual_blocker = body.get('blocker') or ''
+missing = []
+if actual_marker != expected_marker:
+    missing.append(f"businessObjective (expected {expected_marker!r}, got {actual_marker!r})")
+if actual_source != 'harper-openclaw-bootstrap-probe':
+    missing.append(f"sourceName (got {actual_source!r})")
+if actual_blocker != 'other':
+    missing.append(f"blocker (got {actual_blocker!r})")
+if missing:
+    print("    Body round-trip failed. Fields lost between POST and GET:", file=sys.stderr)
+    for m in missing:
+        print(f"      - {m}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("    This is the v0.1.5-era 'single-arg Resource.post()' defect class:", file=sys.stderr)
+    print("    your POST handler is declared as post(target, data) but Harper dispatches", file=sys.stderr)
+    print("    bare POSTs with the body as the single positional argument. Fix: change", file=sys.stderr)
+    print("    to 'async post(data)' and index fields directly off 'data'.", file=sys.stderr)
+    print("    See docs/troubleshooting.md 'Resource method returns 200 but stored record is empty'.", file=sys.stderr)
+    sys.exit(1)
+print("    body round-trip: all asserted fields preserved")
+PYEOF
+ok "Resource method round-trip passed (POST→GET preserved body fields)"
+
+# Cleanup: mark the probe row resolved so it doesn't pollute a real human-review
+# queue. If the mark fails it's not fatal — the row is obviously a probe and a
+# human can purge it.
+curl -sS --max-time 10 -o /dev/null \
+  -u "$CLI_TARGET_USERNAME:$CLI_TARGET_PASSWORD" \
+  -H 'Content-Type: application/json' \
+  -X PATCH \
+  -d '{"status":"resolved","resolvedBy":"bootstrap.sh","resolvedAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}' \
+  "$CLI_APP_URL/PendingHumanAction/$probe_id" || true
+
+# ---------------------------------------------------------------------------
+# 7. Install skill
+# ---------------------------------------------------------------------------
+say "Step 8/8: install harper-pipeline-builder skill"
 
 mkdir -p "$SKILLS_DIR"
 SKILL_SRC="${SCRIPT_DIR}/skills/harper-pipeline-builder"
