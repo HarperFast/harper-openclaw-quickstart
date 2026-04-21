@@ -1,6 +1,6 @@
 {
   "name": "usgs-earthquakes",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Hello-world Harper pipeline built from the OpenClaw template: USGS earthquake ingestion.",
   "type": "module",
   "files": [

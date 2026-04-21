@@ -1,6 +1,6 @@
 {
   "name": "{{PIPELINE_ID}}",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Harper pipeline for {{SOURCE_NAME}}, built by OpenClaw.",
   "type": "module",
   "files": [

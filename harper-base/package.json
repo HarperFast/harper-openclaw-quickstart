@@ -1,6 +1,6 @@
 {
   "name": "harper-base",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Registry + human-escape-hatch tables for the OpenClaw→Harper pipeline-builder pattern.",
   "type": "module",
   "files": [
