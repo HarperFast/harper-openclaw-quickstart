@@ -45,7 +45,12 @@ This is the only per-source code. Rules:
 
 Before you call deploy, run five sanity checks:
 
-1. **Dry-run the fetch function**: extract `FETCH_FN_BODY` into a standalone `fetch-test.js` in your scratch dir, run it with `node`, confirm it returns an array with >0 records and a valid `PRIMARY_KEY_FIELD` on each.
+1. **Dry-run the fetch function**: extract `FETCH_FN_BODY` into a standalone `fetch-test.js` in your scratch dir, run it with `node`, confirm it returns an array with >0 records. Then assert, on **every** returned record:
+   - `PRIMARY_KEY_FIELD` is non-null and non-empty
+   - the incremental-cursor field (timestamp — `Last Modified Date`, `updated_at`, `modifiedAt`, equivalent) is non-null and non-empty
+   - every other field you mapped into the schema as non-null — is non-null
+
+   If any assertion fails across records, **stop**. A 200 with systematically-null fields almost always means your request is missing something the docs require: a case-sensitive field name in a `fields` array (USAspending — `"Action Date"` not `action_date`), a `view` parameter, an `expand=` query arg. A pipeline that runs on data with null timestamps cannot do incremental pulls and will either re-pull the full window every run or drift silently. Go back to the API docs, fix the request, re-run the dry-run. **Do not scaffold with null required fields.**
 2. **Lint the rendered resources.js**: `node --check resources.js` should pass. If it fails, you have a template-render bug — fix before deploying.
 3. **No imports of `Resource` or `tables`**: grep the rendered `resources.js` for `from 'harperdb'` and `from '@harperfast/harper'`. Both should return zero matches. `Resource` and `tables` are runtime-injected globals; the module-time imports return empty bindings and will 500 inside Resource method handlers (e.g. `tables.X is undefined`) even though deploy itself reports success and REST CRUD on the tables works. The only legitimate import is `cron-parser`. This is the single most common post-deploy footgun; if you skip this check, the pipeline endpoint will deploy green and then 500 on first run.
 

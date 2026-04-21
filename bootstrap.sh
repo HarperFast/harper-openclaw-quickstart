@@ -383,22 +383,30 @@ else
   trap 'rm -rf "$HBP_SCRATCH"' EXIT
 
   printf '    fetching harper-best-practices via npm create harper@latest (can take ~30s)...\n'
+  # --yes skips the interactive TUI; the scaffolder writes the skill before
+  # the post-install step that symlinks the `harper` CLI binary. If the harper
+  # CLI is already installed globally (common on dev machines), that symlink
+  # step fails with `EEXIST: /opt/homebrew/bin/harper` and npm exits non-zero
+  # — but the skill directory has already been created. So we don't gate on
+  # npm's exit code. Instead we check whether the skill directory landed;
+  # that's the real success criterion.
+  #
+  # Redirect stderr+stdout to a log so we can fish out a failure cause if
+  # the skill directory really isn't there, without spamming the console
+  # with the scaffolder's spinner output.
   (
     cd "$HBP_SCRATCH"
-    # --yes skips the interactive TUI; the scaffolder still writes the skill.
-    # Redirect stderr+stdout to a log so we can fish out a failure cause if
-    # needed, without spamming the console with its spinner output.
-    if ! npm create harper@latest -- --yes >"$HBP_SCRATCH/.create-harper.log" 2>&1; then
-      cat "$HBP_SCRATCH/.create-harper.log" >&2
-      die "npm create harper@latest failed. See output above. (Does the machine have network access + npm?)"
-    fi
+    npm create harper@latest -- --yes >"$HBP_SCRATCH/.create-harper.log" 2>&1 || true
   )
 
   # The scaffold lands the skill at <scratch>/<project>/.agents/skills/harper-best-practices/.
   # Project name isn't deterministic — locate by skill path.
   hbp_src="$(find "$HBP_SCRATCH" -maxdepth 6 -type d -name 'harper-best-practices' -path '*/.agents/skills/*' 2>/dev/null | head -1)"
   if [[ -z "$hbp_src" || ! -d "$hbp_src" ]]; then
-    die "npm create harper@latest completed but harper-best-practices skill not found under $HBP_SCRATCH. Harper may have changed the install layout — check the scaffolder output."
+    # Skill directory missing — now show the log so the user can see why.
+    printf '    npm create harper@latest output:\n'
+    cat "$HBP_SCRATCH/.create-harper.log" >&2
+    die "npm create harper@latest ran but harper-best-practices skill not found under $HBP_SCRATCH. Either Harper changed the install layout, or the machine has no network / npm access. See output above."
   fi
 
   # Validate it's a real skill (has SKILL.md with frontmatter).

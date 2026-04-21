@@ -2,6 +2,20 @@
 
 **Goal:** for each `SourceCandidate`, produce exactly one of three outcomes: **proceed**, **file-for-human**, or **drop**.
 
+## Prerequisite: the candidate must be real
+
+Before you evaluate, confirm the candidate came out of rule 01 with **all** of the following recorded:
+
+- `docsUrl` pointing at the source's actual API documentation (not a landing page, not a news release)
+- A verified HTTP response from the **specific endpoint** you plan to pipeline against (not a neighboring reference endpoint)
+- At least 3 sample records with field-level shape recorded
+
+If any of those are missing, go back to rule 01. A candidate without these is a guess, not a candidate, and running it through the decision tree below will produce false-positive outcomes.
+
+## Guess-404 handling
+
+If you hit a 404 on an endpoint you constructed yourself (without the docs in front of you), that is **not** a `drop` and **not** a `file-for-human`. It's a you-need-to-read-the-docs bug. Re-read the API documentation, construct the correct request, retry. Only classify as file-for-human or drop after you've confirmed the docs-correct request still fails.
+
 ## The decision tree
 
 ```
