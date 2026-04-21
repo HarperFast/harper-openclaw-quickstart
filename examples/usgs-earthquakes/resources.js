@@ -13,8 +13,17 @@ const PIPELINE_ID = 'usgs-earthquakes';
 const SOURCE_NAME = 'USGS Earthquake Catalog';
 
 async function fetchFromSource() {
-	// Pull the last hour with overlap; upserts dedupe.
-	const since = new Date(Date.now() - 3600_000).toISOString();
+	// USGS supports second-granular timestamps via starttime parameter.
+	// Use cursorTimestamp from the registry for incremental pulls (if available).
+	let since;
+	try {
+		const reg = await tables.Pipeline.get(PIPELINE_ID);
+		since = reg?.cursorTimestamp ?? new Date(Date.now() - 3600_000).toISOString();
+	} catch {
+		// Registry not deployed yet; fall back to last hour.
+		since = new Date(Date.now() - 3600_000).toISOString();
+	}
+
 	const url =
 		'https://earthquake.usgs.gov/fdsnws/event/1/query' +
 		'?format=geojson&starttime=' + encodeURIComponent(since);
@@ -56,22 +65,30 @@ async function runPipeline() {
 			});
 			count++;
 		}
+		// Track the maximum 'time' field as the cursor for the next run.
+		// USGS earthquakes have second-granular timestamps, so this is a strict improvement
+		// over the 1-hour fixed window. Next run will start from this timestamp.
+		const maxCursor = records.reduce((max, r) => {
+			const time = r.time;
+			return time && time > max ? time : max;
+		}, '');
+		await reportRun({ runAt: startedAt, status, records: count, cursorTimestamp: maxCursor });
 	} catch (err) {
 		status = 'error';
 		// eslint-disable-next-line no-console
 		console.error('[pipeline ' + PIPELINE_ID + '] run failed:', err);
+		await reportRun({ runAt: startedAt, status, records: count });
 	}
-	await reportRun({ runAt: startedAt, status, records: count });
 	return { runAt: startedAt, status, records: count };
 }
 
-async function reportRun({ runAt, status, records }) {
+async function reportRun({ runAt, status, records, cursorTimestamp }) {
 	try {
 		await tables.Pipeline.patch(PIPELINE_ID, {
 			lastRunAt: runAt,
 			lastRunStatus: status,
 			lastRunRecords: records,
-			updatedAt: new Date().toISOString(),
+			cursorTimestamp: cursorTimestamp ?? undefined,
 		});
 	} catch {
 		/* harper-base may not be deployed yet */

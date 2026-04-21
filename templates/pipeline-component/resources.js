@@ -50,24 +50,33 @@ async function runPipeline() {
 			});
 			count++;
 		}
+		// For date-granular sources, track the maximum cursor seen in this run.
+		// On the next run, fetchFromSource reads cursorTimestamp from the registry
+		// and uses it as the lower bound for incremental fetches.
+		const maxCursor = records.reduce(
+			(max, r) => {
+				const cursor = r.{{CURSOR_FIELD}};
+				return cursor && cursor > max ? cursor : max;
+			},
+			''
+		);
+		await reportRun({ runAt: startedAt, status, records: count, cursorTimestamp: maxCursor });
 	} catch (err) {
 		status = 'error';
 		// eslint-disable-next-line no-console
 		console.error('[pipeline ' + PIPELINE_ID + '] run failed:', err);
+		await reportRun({ runAt: startedAt, status, records: count });
 	}
-	// Report back to the registry. Uses the Harper operations fetch; runs
-	// inside the cluster so no auth needed for localhost.
-	await reportRun({ runAt: startedAt, status, records: count });
 	return { runAt: startedAt, status, records: count };
 }
 
-async function reportRun({ runAt, status, records }) {
+async function reportRun({ runAt, status, records, cursorTimestamp }) {
 	try {
 		await tables.Pipeline.patch(PIPELINE_ID, {
 			lastRunAt: runAt,
 			lastRunStatus: status,
 			lastRunRecords: records,
-			updatedAt: new Date().toISOString(),
+			cursorTimestamp: cursorTimestamp ?? undefined,
 		});
 	} catch {
 		// Registry might not be deployed yet on first run; don't crash the pipeline.

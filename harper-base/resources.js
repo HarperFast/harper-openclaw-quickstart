@@ -58,6 +58,7 @@ export class PipelineRunReport extends Resource {
             lastRunStatus: data.status ?? 'ok',
             lastRunRecords: Number.isFinite(data.records) ? data.records : 0,
             updatedAt: now(),
+            cursorTimestamp: data.cursorTimestamp ?? undefined,
         });
         return { ok: true };
     }

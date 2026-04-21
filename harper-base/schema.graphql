@@ -27,6 +27,7 @@ type Pipeline @table @export {
     lastRunAt: String
     lastRunStatus: String @indexed
     lastRunRecords: Int
+    cursorTimestamp: String
     notes: String
 }
 
