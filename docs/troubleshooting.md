@@ -128,3 +128,19 @@ Usually the fix is in Step 1 of the skill: make sure the agent is actually hitti
 ## "`pending_human_action` is piling up"
 
 Feature, not bug. Healthy clusters will have a queue of blocked sources. The queue becoming long just means the agent is being honest about what it can't do. Triage it on a cadence — daily for a POC, weekly for a mature cluster.
+
+## Deploy fails with `HarperDB config file validation error: Specified path database does not exist`
+
+Symptom: `harperdb deploy_component` fails with an error about a missing database path.
+
+Root cause: a stale `~/.harperdb/hdb_boot_properties.file` left over from a previous local Harper installation (or v5 experiment), pointing at a non-existent local database directory.
+
+**Fix:**
+
+```bash
+mv ~/.harperdb/hdb_boot_properties.file ~/.harperdb/hdb_boot_properties.file.bak
+# Then retry:
+harperdb deploy_component
+```
+
+If the boot file comes back, the conflict is persistent — add a preflight check to `bootstrap.sh` to detect and warn about it early. The file should only exist if you're running Harper locally; it's harmless to move it aside for remote Fabric deployments.

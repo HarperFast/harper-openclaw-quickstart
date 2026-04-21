@@ -118,8 +118,11 @@ harper-openclaw-quickstart/
 │   └── harper-pipeline-builder/ ← the OpenClaw skill
 │       ├── SKILL.md                (how the agent should think)
 │       ├── AGENTS.md               (drop-in fragment for workspace AGENTS.md)
-│       ├── rules/                  (per-step rules — bootstrap, research, evaluate, scaffold, deploy, verify)
-│       └── prompts/
+│       └── rules/                  (per-step rules — bootstrap, research, evaluate, scaffold, deploy, verify)
+├── .agents/
+│   └── prompts/                 ← release-cut playbooks and orchestration prompts
+│       ├── v0.2.1-cut.md
+│       └── v0.3-cut.md
 ├── templates/
 │   └── pipeline-component/      ← template OpenClaw copies + fills in per source
 │       ├── schema.graphql
